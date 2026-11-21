@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Convierte tus fotografías en litofanías para impresión 3D.">
+<title>LITUM3D Studio</title>
+<link rel="stylesheet" href="studio.css">
+<script defer src="geometry.js"></script>
+<script defer src="lamp.js"></script>
+<script defer src="studio.js"></script>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="mark" aria-hidden="true">◈</span><strong>LITUM<span>3D</span></strong><span class="studio">STUDIO</span></div>
+  <button class="export" id="export"><span aria-hidden="true">↧</span> Exportar STL</button>
+</header>
+<main>
+  <div class="intro"><div><p class="eyebrow">ESPACIO DE DISEÑO</p><h1>Editor de litofanías<span>.</span></h1></div><p class="intro-copy">Convierte una fotografía en un relieve 3D<br> listo para exportar e imprimir.</p></div>
+  <div class="workspace">
+    <section class="viewer" aria-label="Visor de litofanía">
+      <div class="viewer-head"><div class="viewer-title"><i></i> Vista 3D</div><div class="tabs" aria-label="Modo de visualización"><button id="solid" aria-pressed="false">Relieve</button><button id="lit" aria-pressed="true">Contraluz</button></div></div>
+      <canvas id="view" tabindex="0" aria-label="Modelo 3D. Usa las flechas para girar y más o menos para acercar o alejar."></canvas>
+      <div class="viewer-tools"><button id="closer" title="Acercar" aria-label="Acercar">+</button><button id="farther" title="Alejar" aria-label="Alejar">−</button><button id="home" title="Restablecer vista" aria-label="Restablecer vista">⤢</button></div>
+      <div class="viewer-foot"><span>Arrastra para girar · Desplaza para acercar</span><strong id="size"></strong></div>
+    </section>
+    <aside class="controls" aria-label="Configuración de la litofanía">
+      <section>
+        <h2>Imagen</h2>
+        <label class="photo-layout" id="flat-photos-field">Fotos en la placa <select id="flat-photos"><option value="1">1 foto</option><option value="2">2 fotos</option><option value="3">3 fotos</option></select></label>
+        <div class="photo-slots" id="photo-slots" role="group" aria-label="Ubicación de la foto" hidden></div>
+        <label class="upload" id="drop"><canvas id="thumb" width="112" height="82"></canvas><span><strong id="photo-name">Montañas · Ejemplo</strong><small id="photo-hint">Selecciona o arrastra fotos</small></span><b aria-hidden="true">+</b><input id="file" type="file" accept="image/*" multiple aria-label="Importar fotografías"></label>
+        <button id="remove-photo" type="button" class="remove-photo" hidden>Quitar foto de esta posición</button>
+        <label class="check"><input id="invert" type="checkbox"> Invertir tonos</label>
+        <details class="image-editor" id="image-editor">
+          <summary>Ajustar imagen</summary>
+          <label class="range"><span>Brillo <output id="brightness-value">0</output></span><input id="brightness" type="range" min="-100" max="100" value="0"></label>
+          <label class="range"><span>Contraste <output id="contrast-value">0</output></span><input id="contrast" type="range" min="-100" max="100" value="0"></label>
+          <label class="range"><span>Exposición <output id="exposure-value">0 EV</output></span><input id="exposure" type="range" min="-2" max="2" step="0.1" value="0"></label>
+          <div class="image-actions"><button id="rotate-image" type="button">Girar 90°</button><button id="mirror-image" type="button" aria-pressed="false">Espejo</button><button id="reset-image" type="button">Restablecer</button></div>
+        </details>
+      </section>
+      <section>
+        <h2>Geometría</h2>
+        <div id="shapes" class="shapes" role="group" aria-label="Geometría"></div>
+        <div class="fields">
+          <label><span id="width-caption">Ancho</span><span class="number"><input id="width" type="number" min="25" max="350" step="1" value="120"><span>mm</span></span></label>
+          <label>Alto<span class="number"><input id="height" type="number" min="25" max="350" step="1" value="85"><span>mm</span></span></label>
+          <label id="sides-field" hidden>Lados<span class="number"><input id="sides" type="number" min="3" max="12" step="1" value="6"></span></label>
+          <label id="top-field" hidden>Diámetro superior<span class="number"><input id="top" type="number" min="20" max="100" step="1" value="65"><span>%</span></span></label>
+        </div>
+      </section>
+      <section>
+        <h2>Grosor</h2>
+        <div class="fields">
+          <label>Mínimo<span class="number"><input id="min" type="number" min="0.4" max="5.8" step="0.1" value="0.8"><span>mm</span></span></label>
+          <label>Máximo<span class="number"><input id="max" type="number" min="0.6" max="6" step="0.1" value="3.2"><span>mm</span></span></label>
+        </div>
+      </section>
+      <section>
+        <h2>Iluminación</h2>
+        <label class="range"><span>Intensidad <output id="light-value">78 %</output></span><input id="light" type="range" min="0" max="100" value="78"></label>
+      </section>
+      <section id="lamp-section">
+        <h2>Soporte de lámpara</h2>
+        <p class="control-note" id="lamp-unavailable">Disponible para las formas cilíndrica, cónica y poligonal.</p>
+        <label class="check lamp-toggle" id="lamp-toggle" hidden><input id="lamp-enabled" type="checkbox"> Mostrar soporte en la base</label>
+        <div id="lamp-options" hidden>
+          <div class="fields">
+            <label>Orificio del portalámparas<span class="number"><input id="opening" type="number" min="10" max="300" step="0.1" value="42"><span>mm</span></span></label>
+            <label>Altura interior<span class="number"><input id="mount-height" type="number" min="2" max="40" step="0.1" value="8"><span>mm</span></span></label>
+            <label>Grosor de aros<span class="number"><input id="wall" type="number" min="1" max="12" step="0.1" value="2.5"><span>mm</span></span></label>
+            <label>N.º de brazos<span class="number"><input id="arms" type="number" min="2" max="8" step="1" value="4"></span></label>
+            <label>Ancho de brazo<span class="number"><input id="arm-width" type="number" min="2" max="25" step="0.1" value="5"><span>mm</span></span></label>
+            <label>Holgura por lado<span class="number"><input id="clearance" type="number" min="0" max="3" step="0.05" value="0.35"><span>mm</span></span></label>
+          </div>
+          <p class="control-note" id="lamp-fit" aria-live="polite">Mide el paso del portalámparas para ajustar el orificio.</p>
+          <div class="mount-actions"><button id="lamp-view" type="button">Ver desde abajo</button><button id="lamp-export" type="button">Exportar soporte STL</button><button id="lamp-join" type="button">Exportar pieza unida STL</button></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+  <footer><span>LITUM3D STUDIO</span><p role="status" id="status">Las fotografías se procesan en tu navegador.</p></footer>
+</main>
+</body>
+</html>

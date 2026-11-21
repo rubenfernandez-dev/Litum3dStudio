@@ -1,0 +1,31 @@
+# LITUM3D Studio
+
+Abre `index.html` en un navegador con WebGL 2. El editor es estático y no requiere instalación ni conexión. Incluye una imagen de ejemplo. Puedes importar JPG, PNG, WebP y otros formatos que tu navegador pueda decodificar.
+
+En la placa plana, el ancho y el alto corresponden a la cara de la pieza. En las formas envolventes, el diámetro de base corresponde al interior y el relieve se añade hacia fuera. En la poligonal el diámetro se mide entre vértices opuestos del círculo circunscrito. En la cónica, el porcentaje configura el diámetro interior superior. Las fotografías se ajustan a toda la superficie y los perfiles cerrados suavizan la unión de los bordes de la imagen.
+
+El contraluz usa una estimación visual de la luz transmitida según el grosor. Exportar STL descarga una malla binaria de mayor resolución que la vista previa, con coordenadas interpretables en milímetros. La placa queda apoyada sobre su cara lisa y las geometrías envolventes quedan en posición vertical.
+
+## Añadir geometrías
+
+Añade una entrada a `profiles` en `geometry.js` con `label`, `icon`, `closed` y `point(u, v, thickness, options)`. La función devuelve `[x, y, z]` en milímetros para coordenadas `u` y `v` entre 0 y 1. El eje Y es vertical. El grosor cero define el interior o el dorso. Un perfil cerrado comparte la columna de inicio y fin. Si el perfil tiene aristas, usa `segments(count, options)` para alinear la cuadrícula con sus esquinas.
+
+El selector se construye a partir del registro. Si una nueva geometría requiere parámetros, añade sus entradas al panel en `index.html` y conecta su lectura y visibilidad en `studio.js`.
+
+## Ajustar la imagen
+
+Abre **Ajustar imagen** para cambiar brillo, contraste y exposición en EV, girar la foto en incrementos de 90 grados o aplicarle un espejo horizontal. Los cambios se aplican al mapa de grosor de la vista 3D y del STL. **Iluminación** controla el contraluz de la vista previa.
+
+## Soporte de lámpara
+
+Elige una forma cilíndrica, cónica o poligonal y activa **Mostrar soporte en la base**. El soporte añade un aro central con orificio para el portalámparas, brazos y un aro periférico con un escalón de 2 mm que recibe la pantalla. Ajusta el diámetro del orificio, altura interior, grosor, número y ancho de brazos y holgura por lado. Si las medidas impiden generar el soporte, el editor indica qué ajuste revisar.
+
+Usa **Ver desde abajo** para inspeccionar el encaje y **Exportar soporte STL** para descargar la pieza independiente. El botón principal exporta la pantalla. Las medidas son geométricas. El ajuste físico y la resistencia al calor se deben comprobar con el portalámparas y el material finales.
+
+## Usar varias fotos
+
+En **Poligonal**, el número de lados determina las posiciones disponibles. Selecciona una cara para cargar, quitar o editar su foto. En **Plana**, elige de una a tres fotos. Las posiciones ocupan franjas verticales del mismo ancho, de izquierda a derecha, dentro de una única placa.
+
+Al seleccionar o arrastrar varias fotos juntas, se asignan en el orden recibido desde la primera posición. La placa se amplía a dos o tres posiciones automáticamente según la selección. Al subir una sola foto, se reemplaza la posición activa. Una posición vacía conserva el grosor mínimo, con una transición en sus bordes. Los ajustes de imagen son independientes por posición. Las fotos permanecen en memoria al cambiar de geometría o reducir temporalmente el número de posiciones.
+
+**Exportar pieza unida STL** integra la pantalla y el soporte en una sola malla para imprimirlos juntos. La malla conserva las fotos, el orificio y los brazos del soporte. Los botones **Exportar STL** y **Exportar soporte STL** siguen descargando las piezas por separado.
