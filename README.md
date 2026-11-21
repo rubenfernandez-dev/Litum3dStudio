@@ -35,3 +35,7 @@ Al seleccionar o arrastrar varias fotos juntas, se asignan en el orden recibido 
 Selecciona una cara o posición y abre **Ajustar imagen → Zoom de la foto**. El zoom del 100 % al 300 % recorta desde el centro y se aplica al STL de esa foto. **Restablecer** devuelve la foto seleccionada al 100 %.
 
 En **Preajustes**, escribe un nombre y pulsa **Guardar**. Se conservan la forma, las dimensiones, el grosor, el número de caras o posiciones, el soporte y el contraluz. Vuelve a guardar con el mismo nombre para actualizarlo. Selecciona un preajuste y pulsa **Cargar** para reutilizarlo antes de importar fotos nuevas. Los preajustes se guardan en el navegador y no contienen fotografías ni sus ediciones.
+
+## Borde perimetral
+
+Activa **Borde perimetral → Añadir borde**. El ancho se mide hacia el interior: en la placa recorre los cuatro lados y en las formas envolventes se mide en vertical desde los cantos superior e inferior. La altura adicional se suma al grosor máximo de la litofanía y hace sobresalir el borde hacia fuera. Los ajustes se guardan en los preajustes e intervienen tanto en el STL de la pantalla como en el STL de la pieza unida.

@@ -30,37 +30,68 @@ const LithoGeometry = (() => {
       } }
   };
 
+  function borderRamp(width) {
+    return Math.min(0.6, width * 0.3);
+  }
+
+  function edgeSamples(size, width, ramp) {
+    const inside = width / size;
+    const end = (width + ramp) / size;
+    return [inside, end, 1 - end, 1 - inside];
+  }
+
+  function refine(samples, marks) {
+    for (const mark of marks) {
+      samples = samples.filter(value => Math.abs(value - mark) > 1e-7);
+      samples.push(mark);
+    }
+    return samples.sort((a, b) => a - b);
+  }
+
   function build(options, sample, resolution = 180, connection = null) {
     const profile = profiles[options.shape];
     const circumference = options.width * (profile.closed ? Math.PI : 1);
     const ratio = circumference / options.height;
     const panels = options.panels || 1;
     const horizontal = Math.max(32, panels * 24, Math.round(resolution * Math.min(1, ratio)));
-    const positions = connection?.positions;
-    const nx = positions?.length ?? (profile.segments ? profile.segments(horizontal, options) : Math.ceil(horizontal / panels) * panels);
-    const ny = Math.max(24, Math.round(resolution * Math.min(1, 1 / ratio)));
+    const baseColumns = profile.segments ? profile.segments(horizontal, options) : Math.ceil(horizontal / panels) * panels;
+    const baseRows = Math.max(24, Math.round(resolution * Math.min(1, 1 / ratio)));
+    let positions = connection?.positions ?? Array.from({ length: baseColumns + Number(!profile.closed) }, (_, x) => x / baseColumns);
+    let rows = Array.from({ length: baseRows + 1 }, (_, y) => y / baseRows);
+    const border = options.border;
+    const ramp = border ? borderRamp(border.width) : 0;
+    if (border) {
+      rows = refine(rows, edgeSamples(options.height, border.width, ramp));
+      if (!profile.closed) positions = refine(positions, edgeSamples(options.width, border.width, ramp));
+    }
     const joinV = connection ? connection.height / options.height : 0;
-    const joinRow = connection ? Math.max(1, Math.round(joinV * ny)) : 0;
-    const columns = nx + Number(!profile.closed);
-    const layer = columns * (ny + 1);
+    if (connection) rows = refine(rows, [joinV]);
+    const joinRow = connection ? rows.indexOf(joinV) : 0;
+    const columns = positions.length;
+    const nx = columns - Number(!profile.closed);
+    const ny = rows.length - 1;
+    const layer = columns * rows.length;
     const vertices = new Float32Array(layer * 2 * 4);
     const triangles = [];
     for (let y = 0; y <= ny; y++) {
-      // Place an inner-wall ring exactly at the height of the integral mount.
-      const innerV = joinRow === 0 ? y / ny : y <= joinRow ? y / joinRow * joinV :
-        joinV + (y - joinRow) / (ny - joinRow) * (1 - joinV);
       for (let x = 0; x < columns; x++) {
-        const u = positions ? positions[x] : x / nx, v = y / ny;
+        const u = positions[x], v = rows[y];
         let tone = sample(u, 1 - v);
         if (profile.closed && panels === 1) {
           // Blend both photo edges into one shared, continuous relief seam.
           const blend = Math.max(0, 1 - Math.min(u, 1 - u) * 26);
           if (blend) tone += ((sample(0, 1 - v) + sample(1, 1 - v)) / 2 - tone) * blend;
         }
-        const thickness = options.min + (options.max - options.min) * (options.invert ? tone : 1 - tone);
+        let thickness = options.min + (options.max - options.min) * (options.invert ? tone : 1 - tone);
+        if (border) {
+          let edgeDistance = Math.min(v, 1 - v) * options.height;
+          if (!profile.closed) edgeDistance = Math.min(edgeDistance, Math.min(u, 1 - u) * options.width);
+          const amount = Math.max(0, Math.min(1, (border.width + ramp - edgeDistance) / ramp));
+          thickness += (options.max + border.rise - thickness) * amount;
+        }
         const index = y * columns + x;
         vertices.set([...profile.point(u, v, thickness, options), thickness], index * 4);
-        vertices.set([...profile.point(u, innerV, 0, options), thickness], (index + layer) * 4);
+        vertices.set([...profile.point(u, v, 0, options), thickness], (index + layer) * 4);
       }
     }
 
@@ -114,6 +145,6 @@ const LithoGeometry = (() => {
     }
     return buffer;
   }
-  return { profiles, build, stl };
+  return { profiles, build, borderRamp, stl };
 })();
 if (typeof module !== "undefined") module.exports = LithoGeometry;

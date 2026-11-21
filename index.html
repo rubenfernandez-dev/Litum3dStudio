@@ -71,6 +71,17 @@
           <label>Máximo<span class="number"><input id="max" type="number" min="0.6" max="6" step="0.1" value="3.2"><span>mm</span></span></label>
         </div>
       </section>
+      <section aria-labelledby="border-title">
+        <h2 id="border-title">Borde perimetral</h2>
+        <label class="check"><input id="border-enabled" type="checkbox"> Añadir borde</label>
+        <div id="border-options" hidden>
+          <div class="fields">
+            <label>Ancho del borde<span class="number"><input id="border-width" type="number" min="0.5" max="20" step="0.1" value="3"><span>mm</span></span></label>
+            <label>Altura adicional<span class="number"><input id="border-rise" type="number" min="0" max="8" step="0.1" value="1"><span>mm</span></span></label>
+          </div>
+          <p class="control-note border-note" id="border-note" aria-live="polite"></p>
+        </div>
+      </section>
       <section>
         <h2>Iluminación</h2>
         <label class="range"><span>Intensidad <output id="light-value">78 %</output></span><input id="light" type="range" min="0" max="100" value="78"></label>

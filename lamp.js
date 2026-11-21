@@ -36,11 +36,12 @@ const LampMount = (() => {
     const base = -shade.height / 2;
     const vertex = (x, y, r) => (y * 5 + r) * n + (x + n) % n;
     const heightLevels = [base - shelfHeight, base, base + height];
+    const edgeThickness = shade.max + (shade.border?.rise ?? 0);
     for (let x = 0; x < n; x++) {
       const angle = columns[x];
       const around = polygon ? (angle % (tau / shade.sides)) - Math.PI / shade.sides : 0;
       const radialFactor = apothemFactor / Math.cos(around);
-      const shelfEnd = (baseRadius + (shade.max + 0.6) / apothemFactor) * radialFactor;
+      const shelfEnd = (baseRadius + (edgeThickness + 0.6) / apothemFactor) * radialFactor;
       for (let y = 0; y < 3; y++) {
         const fit = ((y === 2 ? topRadius : baseRadius) - clearance / apothemFactor) * radialFactor;
         const radii = [opening / 2, hub, fit - wall * radialFactor / apothemFactor, fit, shelfEnd];
