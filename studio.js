@@ -1,7 +1,7 @@
 "use strict";
 const $ = id => document.getElementById(id);
 const canvas = $("view");
-const { profiles, build, stl } = LithoGeometry;
+const { profiles, build, borderRamp, stl } = LithoGeometry;
 const controls = ["width", "height", "sides", "top", "min", "max"];
 const initialCamera = { yaw: -0.33, pitch: 0.19, zoom: 1 };
 const camera = { ...initialCamera };
@@ -20,6 +20,7 @@ const mountControls = {
 };
 const presetKey = "litum3d-presets-v1";
 const presetFields = [...controls, ...Object.values(mountControls), "flat-photos", "light"];
+const borderFields = ["border-width", "border-rise"];
 let importVersion = 0;
 
 function landscape() {
@@ -226,14 +227,35 @@ function settings() {
     options[id] = input.valueAsNumber;
   }
   if (options.max <= options.min) throw new Error("El grosor máximo debe superar al mínimo.");
+  if ($("border-enabled").checked) {
+    const widthInput = $("border-width"), riseInput = $("border-rise");
+    if (!widthInput.value || !riseInput.value || !widthInput.validity.valid || !riseInput.validity.valid) {
+      throw new Error("Revisa el ancho y la altura del borde.");
+    }
+    const width = widthInput.valueAsNumber, rise = riseInput.valueAsNumber;
+    const span = profiles[shape].closed ? options.height : Math.min(options.width, options.height);
+    if (2 * (width + borderRamp(width)) >= span) {
+      throw new Error("Reduce el ancho del borde para dejar espacio para la imagen.");
+    }
+    options.border = { width, rise };
+  }
   return options;
 }
 
 function regenerate() {
+  $("border-options").hidden = !$("border-enabled").checked;
+  $("border-note").textContent = profiles[shape].closed ?
+    "En los cantos superior e inferior. La altura se suma al grosor máximo." :
+    "En los cuatro lados. La altura se suma al grosor máximo.";
+  $("border-note").removeAttribute("data-invalid");
   try {
     mesh = build(settings(), sample);
   } catch (error) {
     $("status").textContent = error.message;
+    if ($("border-enabled").checked && error.message.includes("borde")) {
+      $("border-note").textContent = error.message;
+      $("border-note").dataset.invalid = "true";
+    }
     $("export").disabled = true;
     $("lamp-export").disabled = true;
     $("lamp-join").disabled = true;
@@ -481,11 +503,11 @@ $("preset-form").onsubmit = event => {
   try {
     const presets = readPresets();
     const previous = presets.findIndex(preset => preset.name === name);
-    const values = Object.fromEntries(presetFields.map(id => {
+    const values = Object.fromEntries([...presetFields, ...borderFields].map(id => {
       const control = $(id);
       return [id, control.validity.valid && control.value ? control.value : control.defaultValue];
     }));
-    const preset = { name, shape, lamp, backlight, values };
+    const preset = { name, shape, lamp, backlight, border: $("border-enabled").checked, values };
     if (previous < 0) presets.push(preset);
     else presets[previous] = preset;
     writePresets(presets, name, previous < 0 ? "Preajuste guardado." : "Preajuste actualizado.");
@@ -500,6 +522,8 @@ $("preset-load").onclick = () => {
     const preset = readPresets().find(item => item.name === $("preset-list").value);
     if (!preset) { refreshPresets(); return; }
     for (const id of presetFields) $(id).value = preset.values[id];
+    for (const id of borderFields) $(id).value = preset.values[id] ?? $(id).defaultValue;
+    $("border-enabled").checked = preset.border === true;
     polygonFaces = $("sides").valueAsNumber;
     $("lamp-enabled").checked = preset.lamp === true;
     $("preset-name").value = preset.name;
@@ -584,6 +608,7 @@ for (const id of controls) $(id).addEventListener("input", () => {
   regenerate();
 });
 $("flat-photos").onchange = () => { renderSlots(); regenerate(); };
+for (const id of ["border-enabled", ...borderFields]) $(id).addEventListener("input", regenerate);
 function editImage() {
   const photo = photos[activePhoto];
   if (!photo) return;
