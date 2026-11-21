@@ -13,10 +13,13 @@ let polygonFaces = 6;
 const photos = [];
 const pendingImports = [];
 const toneControls = ["brightness", "contrast", "exposure"];
+const photoControls = ["photo-zoom", ...toneControls];
 const mountControls = {
   opening: "opening", height: "mount-height", wall: "wall", arms: "arms",
   armWidth: "arm-width", clearance: "clearance"
 };
+const presetKey = "litum3d-presets-v1";
+const presetFields = [...controls, ...Object.values(mountControls), "flat-photos", "light"];
 let importVersion = 0;
 
 function landscape() {
@@ -88,7 +91,7 @@ function setImage(image, label) {
   context.drawImage(image, 0, 0, bitmap.width, bitmap.height);
   const photo = {
     original: bitmap, label, rotation: 0, mirrored: false,
-    invert: false, brightness: 0, contrast: 0, exposure: 0
+    invert: false, brightness: 0, contrast: 0, exposure: 0, "photo-zoom": 100
   };
   updateImage(photo);
   return photo;
@@ -101,8 +104,9 @@ function updateImage(photo) {
   bitmap.width = swapped ? original.height : original.width;
   bitmap.height = swapped ? original.width : original.height;
   const context = bitmap.getContext("2d", { willReadFrequently: true });
+  const magnification = photo["photo-zoom"] / 100;
   context.translate(bitmap.width / 2, bitmap.height / 2);
-  context.scale(mirrored ? -1 : 1, 1);
+  context.scale((mirrored ? -1 : 1) * magnification, magnification);
   context.rotate(rotation * Math.PI / 2);
   context.drawImage(original, -original.width / 2, -original.height / 2);
   const image = context.getImageData(0, 0, bitmap.width, bitmap.height);
@@ -147,9 +151,10 @@ function showPhoto() {
     preview.drawImage(bitmap, (thumb.width - bitmap.width * scale) / 2,
       (thumb.height - bitmap.height * scale) / 2, bitmap.width * scale, bitmap.height * scale);
   }
-  for (const id of toneControls) {
-    $(id).value = photo?.[id] ?? 0;
-    $(id + "-value").textContent = $(id).valueAsNumber.toLocaleString("es") + (id === "exposure" ? " EV" : "");
+  for (const id of photoControls) {
+    $(id).value = photo?.[id] ?? $(id).defaultValue;
+    const unit = id === "exposure" ? " EV" : id === "photo-zoom" ? " %" : "";
+    $(id + "-value").textContent = $(id).valueAsNumber.toLocaleString("es") + unit;
   }
   $("mirror-image").setAttribute("aria-pressed", String(photo?.mirrored ?? false));
 }
@@ -422,6 +427,105 @@ function chooseShape(key) {
   regenerate();
 }
 
+function readPresets() {
+  const stored = JSON.parse(localStorage.getItem(presetKey) ?? "[]");
+  if (!Array.isArray(stored)) return [];
+  return stored.filter(preset => preset && typeof preset.name === "string" &&
+    Object.hasOwn(profiles, preset.shape) && preset.values &&
+    presetFields.every(id => typeof preset.values[id] === "string"));
+}
+
+function updatePresetButtons() {
+  const selected = Boolean($("preset-list").value);
+  $("preset-load").disabled = !selected;
+  $("preset-remove").disabled = !selected;
+}
+
+function showPresets(presets, selected = "") {
+  const list = $("preset-list");
+  list.replaceChildren(new Option("Seleccionar", ""));
+  for (const preset of presets) list.add(new Option(preset.name, preset.name));
+  list.value = presets.some(preset => preset.name === selected) ? selected : "";
+  updatePresetButtons();
+}
+
+function refreshPresets() {
+  try {
+    showPresets(readPresets(), $("preset-list").value);
+  } catch {
+    $("preset-status").textContent = "No se pudo acceder a los preajustes de este navegador.";
+  }
+}
+
+function writePresets(presets, selected, message) {
+  localStorage.setItem(presetKey, JSON.stringify(presets));
+  showPresets(presets, selected);
+  $("preset-status").textContent = message;
+}
+
+$("preset-form").onsubmit = event => {
+  event.preventDefault();
+  const name = $("preset-name").value.trim();
+  if (!name) {
+    $("preset-status").textContent = "Escribe un nombre para el preajuste.";
+    return;
+  }
+  const lamp = LampMount.supports(shape) && $("lamp-enabled").checked;
+  try {
+    settings();
+    if (lamp && !mountMesh) throw new Error("Revisa las medidas del soporte antes de guardar.");
+  } catch (error) {
+    $("preset-status").textContent = error.message;
+    return;
+  }
+  try {
+    const presets = readPresets();
+    const previous = presets.findIndex(preset => preset.name === name);
+    const values = Object.fromEntries(presetFields.map(id => {
+      const control = $(id);
+      return [id, control.validity.valid && control.value ? control.value : control.defaultValue];
+    }));
+    const preset = { name, shape, lamp, backlight, values };
+    if (previous < 0) presets.push(preset);
+    else presets[previous] = preset;
+    writePresets(presets, name, previous < 0 ? "Preajuste guardado." : "Preajuste actualizado.");
+  } catch {
+    $("preset-status").textContent = "No se pudo guardar el preajuste en este navegador.";
+  }
+};
+
+$("preset-list").onchange = updatePresetButtons;
+$("preset-load").onclick = () => {
+  try {
+    const preset = readPresets().find(item => item.name === $("preset-list").value);
+    if (!preset) { refreshPresets(); return; }
+    for (const id of presetFields) $(id).value = preset.values[id];
+    polygonFaces = $("sides").valueAsNumber;
+    $("lamp-enabled").checked = preset.lamp === true;
+    $("preset-name").value = preset.name;
+    $("light-value").textContent = $("light").value + " %";
+    lighting(preset.backlight === true);
+    chooseShape(preset.shape);
+    $("preset-status").textContent = "Preajuste cargado. Ya puedes añadir tus fotos.";
+  } catch {
+    $("preset-status").textContent = "No se pudo cargar el preajuste.";
+  }
+};
+
+$("preset-remove").onclick = () => {
+  try {
+    const name = $("preset-list").value;
+    writePresets(readPresets().filter(preset => preset.name !== name), "", "Preajuste borrado.");
+    if ($("preset-name").value === name) $("preset-name").value = "";
+  } catch {
+    $("preset-status").textContent = "No se pudo borrar el preajuste.";
+  }
+};
+
+window.addEventListener("storage", event => {
+  if (event.key === presetKey || event.key === null) refreshPresets();
+});
+
 async function importPhotos(files) {
   if (!files.length) return;
   const version = ++importVersion;
@@ -483,13 +587,13 @@ $("flat-photos").onchange = () => { renderSlots(); regenerate(); };
 function editImage() {
   const photo = photos[activePhoto];
   if (!photo) return;
-  for (const id of toneControls) photo[id] = $(id).valueAsNumber;
+  for (const id of photoControls) photo[id] = $(id).valueAsNumber;
   photo.invert = $("invert").checked;
   updateImage(photo);
   showPhoto();
   regenerate();
 }
-for (const id of [...toneControls, "invert"]) $(id).addEventListener("input", editImage);
+for (const id of [...photoControls, "invert"]) $(id).addEventListener("input", editImage);
 $("rotate-image").onclick = () => {
   const photo = photos[activePhoto];
   photo.rotation = (photo.rotation + 1) % 4;
@@ -501,7 +605,7 @@ $("mirror-image").onclick = () => {
   editImage();
 };
 $("reset-image").onclick = () => {
-  for (const id of toneControls) $(id).value = $(id).defaultValue;
+  for (const id of photoControls) $(id).value = $(id).defaultValue;
   Object.assign(photos[activePhoto], { rotation: 0, mirrored: false });
   $("invert").checked = false;
   editImage();
@@ -624,3 +728,4 @@ new ResizeObserver(redraw).observe(canvas);
 startViewer();
 photos[0] = setImage(landscape(), "Montañas · Ejemplo");
 chooseShape(shape);
+refreshPresets();

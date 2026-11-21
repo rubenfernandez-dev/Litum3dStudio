@@ -29,3 +29,9 @@ En **Poligonal**, el número de lados determina las posiciones disponibles. Sele
 Al seleccionar o arrastrar varias fotos juntas, se asignan en el orden recibido desde la primera posición. La placa se amplía a dos o tres posiciones automáticamente según la selección. Al subir una sola foto, se reemplaza la posición activa. Una posición vacía conserva el grosor mínimo, con una transición en sus bordes. Los ajustes de imagen son independientes por posición. Las fotos permanecen en memoria al cambiar de geometría o reducir temporalmente el número de posiciones.
 
 **Exportar pieza unida STL** integra la pantalla y el soporte en una sola malla para imprimirlos juntos. La malla conserva las fotos, el orificio y los brazos del soporte. Los botones **Exportar STL** y **Exportar soporte STL** siguen descargando las piezas por separado.
+
+## Zoom y preajustes
+
+Selecciona una cara o posición y abre **Ajustar imagen → Zoom de la foto**. El zoom del 100 % al 300 % recorta desde el centro y se aplica al STL de esa foto. **Restablecer** devuelve la foto seleccionada al 100 %.
+
+En **Preajustes**, escribe un nombre y pulsa **Guardar**. Se conservan la forma, las dimensiones, el grosor, el número de caras o posiciones, el soporte y el contraluz. Vuelve a guardar con el mismo nombre para actualizarlo. Selecciona un preajuste y pulsa **Cargar** para reutilizarlo antes de importar fotos nuevas. Los preajustes se guardan en el navegador y no contienen fotografías ni sus ediciones.
