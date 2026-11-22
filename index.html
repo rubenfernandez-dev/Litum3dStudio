@@ -87,10 +87,22 @@
         <h2 id="border-title">Borde perimetral</h2>
         <label class="check"><input id="border-enabled" type="checkbox"> Añadir borde</label>
         <div id="border-options" hidden>
-          <div class="fields">
+          <label class="check border-mode"><input id="border-independent" type="checkbox"> Ajustar bordes por separado</label>
+          <div class="fields" id="border-shared">
             <label>Ancho del borde<span class="number"><input id="border-width" type="number" min="0.5" max="20" step="0.1" value="3"><span>mm</span></span></label>
             <label>Altura adicional<span class="number"><input id="border-rise" type="number" min="0" max="8" step="0.1" value="1"><span>mm</span></span></label>
           </div>
+          <div id="border-individual" hidden></div>
+          <template id="border-edge-template">
+            <fieldset class="border-edge">
+              <legend></legend>
+              <label class="check"><input data-edge-enabled type="checkbox" checked> Activar</label>
+              <div class="fields">
+                <label>Ancho del borde<span class="number"><input data-edge-width type="number" min="0.5" max="20" step="0.1" value="3"><span>mm</span></span></label>
+                <label>Altura adicional<span class="number"><input data-edge-rise type="number" min="0" max="8" step="0.1" value="1"><span>mm</span></span></label>
+              </div>
+            </fieldset>
+          </template>
           <p class="control-note border-note" id="border-note" aria-live="polite"></p>
         </div>
       </section>

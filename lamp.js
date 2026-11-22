@@ -44,7 +44,10 @@ const LampMount = (() => {
     const base = -shade.height / 2;
     const vertex = (x, y, r) => (y * 5 + r) * n + (x + n) % n;
     const heightLevels = [base - shelfHeight, base, base + height];
-    const edgeThickness = shade.max + (shade.border?.rise ?? 0);
+    const edgeThickness = shade.max + Math.max(
+      shade.border?.bottom?.rise ?? shade.border?.rise ?? 0,
+      shade.shape === "arc" ? shade.border?.sides?.rise ?? 0 : 0
+    );
     for (let x = 0; x < n; x++) {
       const angle = columns[x];
       const around = polygon ? (angle % (tau / shade.sides)) - Math.PI / shade.sides : 0;
