@@ -29,6 +29,10 @@ const mountControls = {
 const presetKey = "litum3d-presets-v1";
 const presetFields = [...controls, ...Object.values(mountControls), "flat-photos", "light"];
 const borderFields = ["border-width", "border-rise"];
+const edgeLabels = { top: "Superior", bottom: "Inferior", sides: "Laterales" };
+const borderEdges = Object.keys(edgeLabels);
+const edgeMeasureFields = borderEdges.flatMap(edge => ["width", "rise"].map(measure => "border-" + edge + "-" + measure));
+let individualBordersConfigured = false;
 let importVersion = 0;
 
 function landscape() {
@@ -288,6 +292,32 @@ function buildPhotoMesh(options, resolution, connection) {
   return build(options, (u, v) => sample(u, v, options, layout), resolution, connection);
 }
 
+function readBorder(prefix) {
+  const width = $(prefix + "-width"), rise = $(prefix + "-rise");
+  if (!width.value || !rise.value || !width.validity.valid || !rise.validity.valid) {
+    throw new Error("Revisa el ancho y la altura de los bordes activos.");
+  }
+  return { width: width.valueAsNumber, rise: rise.valueAsNumber };
+}
+
+function readBorders(options) {
+  const closed = profiles[options.shape].closed;
+  const independent = $("border-independent").checked;
+  const shared = independent ? null : readBorder("border");
+  const edges = {};
+  for (const edge of borderEdges) {
+    if (edge === "sides" && closed) continue;
+    const prefix = "border-" + edge;
+    edges[edge] = independent ? ($(prefix + "-enabled").checked ? readBorder(prefix) : null) : shared;
+  }
+  const reach = border => border ? border.width + borderRamp(border.width) : 0;
+  if (reach(edges.top) + reach(edges.bottom) >= options.height ||
+      2 * reach(edges.sides) >= surfaceWidth(options)) {
+    throw new Error("Reduce el ancho del borde para dejar espacio para la imagen.");
+  }
+  return shared ?? edges;
+}
+
 function settings() {
   const options = { shape, panels: panelCount() };
   if (profiles[shape].variants) options.variant = $(shape + "-profile").value;
@@ -301,26 +331,20 @@ function settings() {
     options[id] = input.valueAsNumber;
   }
   if (options.max <= options.min) throw new Error("El grosor máximo debe superar al mínimo.");
-  if ($("border-enabled").checked) {
-    const widthInput = $("border-width"), riseInput = $("border-rise");
-    if (!widthInput.value || !riseInput.value || !widthInput.validity.valid || !riseInput.validity.valid) {
-      throw new Error("Revisa el ancho y la altura del borde.");
-    }
-    const width = widthInput.valueAsNumber, rise = riseInput.valueAsNumber;
-    const span = profiles[shape].closed ? options.height : Math.min(surfaceWidth(options), options.height);
-    if (2 * (width + borderRamp(width)) >= span) {
-      throw new Error("Reduce el ancho del borde para dejar espacio para la imagen.");
-    }
-    options.border = { width, rise };
-  }
+  if ($("border-enabled").checked) options.border = readBorders(options);
   return options;
 }
 
 function regenerate() {
   $("border-options").hidden = !$("border-enabled").checked;
-  $("border-note").textContent = profiles[shape].closed ?
-    "En los cantos superior e inferior. La altura se suma al grosor máximo." :
-    "En todo el contorno abierto. La altura se suma al grosor máximo.";
+  const independent = $("border-independent").checked;
+  $("border-shared").hidden = independent;
+  $("border-individual").hidden = !independent;
+  $("border-sides-group").hidden = profiles[shape].closed;
+  for (const edge of borderEdges) {
+    $("border-" + edge + "-measures").hidden = !$("border-" + edge + "-enabled").checked;
+  }
+  $("border-note").textContent = "La altura adicional se suma al grosor máximo.";
   $("border-note").removeAttribute("data-invalid");
   try {
     mesh = buildPhotoMesh(settings());
@@ -581,12 +605,17 @@ $("preset-form").onsubmit = event => {
   try {
     const presets = readPresets();
     const previous = presets.findIndex(preset => preset.name === name);
-    const fields = [...presetFields, ...borderFields, ...shapeFields, ...vesselShapes.map(key => key + "-profile")];
+    const fields = [...presetFields, ...borderFields, ...edgeMeasureFields, ...shapeFields, ...vesselShapes.map(key => key + "-profile")];
     const values = Object.fromEntries(fields.map(id => {
       const control = $(id);
       return [id, control.validity.valid && control.value ? control.value : control.defaultValue];
     }));
-    const preset = { name, shape, lamp, backlight, border: $("border-enabled").checked, photoPositions, values };
+    const edges = individualBordersConfigured || $("border-independent").checked ?
+      Object.fromEntries(borderEdges.map(edge => [edge, $("border-" + edge + "-enabled").checked])) : null;
+    const preset = {
+      name, shape, lamp, backlight, border: $("border-enabled").checked,
+      independentBorders: $("border-independent").checked, edges, photoPositions, values
+    };
     if (previous < 0) presets.push(preset);
     else presets[previous] = preset;
     writePresets(presets, name, previous < 0 ? "Preajuste guardado." : "Preajuste actualizado.");
@@ -601,7 +630,10 @@ $("preset-load").onclick = () => {
     const preset = readPresets().find(item => item.name === $("preset-list").value);
     if (!preset) { refreshPresets(); return; }
     for (const id of presetFields) $(id).value = preset.values[id];
-    for (const id of [...borderFields, ...shapeFields]) $(id).value = preset.values[id] ?? $(id).defaultValue;
+    for (const id of [...borderFields, ...edgeMeasureFields, ...shapeFields]) $(id).value = preset.values[id] ?? $(id).defaultValue;
+    $("border-independent").checked = preset.independentBorders === true;
+    individualBordersConfigured = Boolean(preset.edges);
+    for (const edge of borderEdges) $("border-" + edge + "-enabled").checked = preset.edges?.[edge] !== false;
     for (const key of vesselShapes) {
       const id = key + "-profile";
       const variant = preset.values[id];
@@ -714,7 +746,27 @@ $("wrap-remove").onclick = () => {
   renderSlots();
   regenerate();
 };
-for (const id of ["border-enabled", ...borderFields]) $(id).addEventListener("input", regenerate);
+for (const edge of borderEdges) {
+  const group = $("border-edge-template").content.firstElementChild.cloneNode(true);
+  const prefix = "border-" + edge;
+  group.id = prefix + "-group";
+  group.querySelector("legend").textContent = edgeLabels[edge];
+  group.querySelector(".fields").id = prefix + "-measures";
+  for (const key of ["enabled", "width", "rise"]) group.querySelector("[data-edge-" + key + "]").id = prefix + "-" + key;
+  $("border-individual").append(group);
+}
+for (const id of ["border-enabled", ...borderFields, ...edgeMeasureFields, ...borderEdges.map(edge => "border-" + edge + "-enabled")]) {
+  $(id).addEventListener("input", regenerate);
+}
+$("border-independent").addEventListener("input", () => {
+  if ($("border-independent").checked && !individualBordersConfigured) {
+    for (const edge of borderEdges) for (const measure of ["width", "rise"]) {
+      $("border-" + edge + "-" + measure).value = $("border-" + measure).value;
+    }
+    individualBordersConfigured = true;
+  }
+  regenerate();
+});
 function editImage() {
   const photo = photos[activePhoto];
   if (!photo) return;

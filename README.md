@@ -53,3 +53,5 @@ El cilindro divide la circunferencia en posiciones iguales. Selecciona varias fo
 El arco, el portavelas y el florero también admiten varias fotos. Puedes seleccionarlas de golpe o ajustar las posiciones con **+** y **−**. Con una sola foto, se centra y mantiene la proporción en la superficie. En los recipientes, el encuadre compensa los cambios de diámetro entre la base, el cuerpo y la boca. El número de posiciones se puede guardar en un preajuste.
 
 En **Geometría**, elige un perfil de recipiente. **Portavelas** ofrece Redondo, Cuenco, Tulipa y Barril. **Florero** ofrece Clásico, Botella, Ánfora y Trompeta. El diámetro indicado corresponde a la base. El perfil elegido se guarda en los preajustes y se aplica al encuadre de las fotos y al STL.
+
+En **Borde perimetral**, deja desactivado **Ajustar bordes por separado** para usar las mismas medidas. Actívalo para configurar por separado **Superior**, **Inferior** y, en la placa o el arco, **Laterales**. Puedes apagar cualquiera de ellos. La configuración se guarda en los preajustes y se aplica al STL, incluida la exportación con soporte unido.

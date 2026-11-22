@@ -73,10 +73,18 @@ const LithoGeometry = (() => {
     return Math.min(0.6, width * 0.3);
   }
 
-  function edgeSamples(size, width, ramp) {
-    const inside = width / size;
-    const end = (width + ramp) / size;
-    return [inside, end, 1 - end, 1 - inside];
+  function edgeSamples(size, start, end) {
+    const samples = [];
+    if (start) samples.push(start.width / size, (start.width + borderRamp(start.width)) / size);
+    if (end) samples.push(1 - end.width / size, 1 - (end.width + borderRamp(end.width)) / size);
+    return samples;
+  }
+
+  function edgeThickness(distance, border, base, peak) {
+    if (!border) return base;
+    const ramp = borderRamp(border.width);
+    const amount = Math.max(0, Math.min(1, (border.width + ramp - distance) / ramp));
+    return base + (peak + border.rise - base) * amount;
   }
 
   function refine(samples, marks) {
@@ -98,10 +106,13 @@ const LithoGeometry = (() => {
     let positions = connection?.positions ?? Array.from({ length: baseColumns + Number(!profile.closed) }, (_, x) => x / baseColumns);
     let rows = Array.from({ length: baseRows + 1 }, (_, y) => y / baseRows);
     const border = options.border;
-    const ramp = border ? borderRamp(border.width) : 0;
+    // A shared border also accepts the original width/rise representation.
+    const bottom = border?.bottom ?? (border?.width ? border : null);
+    const top = border?.top ?? (border?.width ? border : null);
+    const sides = profile.closed ? null : border?.sides ?? (border?.width ? border : null);
     if (border) {
-      rows = refine(rows, edgeSamples(options.height, border.width, ramp));
-      if (!profile.closed) positions = refine(positions, edgeSamples(surface, border.width, ramp));
+      rows = refine(rows, edgeSamples(options.height, bottom, top));
+      if (sides) positions = refine(positions, edgeSamples(surface, sides, sides));
     }
     const innerStart = connection?.height ?? (profile.floor ? options["base-thickness"] : 0);
     const innerV = innerStart / options.height;
@@ -124,10 +135,11 @@ const LithoGeometry = (() => {
         }
         let thickness = options.min + (options.max - options.min) * (options.invert ? tone : 1 - tone);
         if (border) {
-          let edgeDistance = Math.min(v, 1 - v) * options.height;
-          if (!profile.closed) edgeDistance = Math.min(edgeDistance, Math.min(u, 1 - u) * surface);
-          const amount = Math.max(0, Math.min(1, (border.width + ramp - edgeDistance) / ramp));
-          thickness += (options.max + border.rise - thickness) * amount;
+          thickness = Math.max(
+            edgeThickness(v * options.height, bottom, thickness, options.max),
+            edgeThickness((1 - v) * options.height, top, thickness, options.max),
+            edgeThickness(Math.min(u, 1 - u) * surface, sides, thickness, options.max)
+          );
         }
         const index = y * columns + x;
         vertices.set([...profile.point(u, v, thickness, options), thickness], index * 4);

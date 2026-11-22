@@ -6,3 +6,4 @@
 .border-note{margin-top:8px}#border-options{margin-top:8px}
 .slot-actions{display:flex;gap:5px}.slot-actions button{width:32px;height:30px;padding:0;background:#26231d;border:1px solid #494137;border-radius:6px;font-size:16px}.slot-actions button:disabled{opacity:.45;cursor:not-allowed}
 .shape-note{margin-top:9px}
+.border-mode{margin-bottom:9px}.border-edge{margin:0 0 8px;padding:7px 9px 9px;min-width:0;border:1px solid #39382f;border-radius:7px}.border-edge legend{padding:0 4px;color:var(--paper);font-size:13px}.border-edge>.check{margin:0 0 6px}
