@@ -49,3 +49,5 @@ El cilindro divide la circunferencia en posiciones iguales. Selecciona varias fo
 **Arco** crea una pantalla abierta con ángulo regulable de 35° a 330°. El diámetro es el del círculo del que parte el arco. Puedes añadir un borde que recorre sus cuatro cantos y un soporte circular para lámpara, que se descarga como STL separado.
 
 **Portavelas** y **Florero** tienen un fondo sólido integrado de grosor regulable y una boca abierta. El portavelas está pensado para velas LED. Para flores con agua, usa un recipiente interior. Las medidas específicas de cada forma se pueden guardar en preajustes.
+
+El arco, el portavelas y el florero también admiten varias fotos. Puedes seleccionarlas de golpe o ajustar las posiciones con **+** y **−**. Con una sola foto, se centra y mantiene la proporción en la superficie. En los recipientes, el encuadre compensa los cambios de diámetro entre la base, el cuerpo y la boca. El número de posiciones se puede guardar en un preajuste.
