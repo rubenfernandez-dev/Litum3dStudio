@@ -1,8 +1,15 @@
 "use strict";
 const $ = id => document.getElementById(id);
 const canvas = $("view");
-const { profiles, build, borderRamp, stl } = LithoGeometry;
+const { profiles, build, borderRamp, surfaceWidth, stl } = LithoGeometry;
 const controls = ["width", "height", "sides", "top", "min", "max"];
+const shapeFields = ["arc-angle", "base-thickness"];
+const vesselShapes = Object.keys(profiles).filter(key => profiles[key].variants);
+const shapeNotes = {
+  arc: "Pantalla curva abierta. El soporte circular encaja bajo el arco y se exporta por separado.",
+  candle: "Para velas LED. El recipiente queda abierto por arriba.",
+  vase: "Florero para flores secas o con un recipiente interior para el agua."
+};
 const initialCamera = { yaw: -0.33, pitch: 0.19, zoom: 1 };
 const camera = { ...initialCamera };
 let shape = "flat";
@@ -10,7 +17,7 @@ let backlight = true;
 let mesh, mountMesh, frame, renderer;
 let activePhoto = 0;
 let polygonFaces = 6;
-let cylinderPhotos = 1;
+const photoPositions = { cylinder: 1, arc: 1, candle: 1, vase: 1 };
 const photos = [];
 const pendingImports = [];
 const toneControls = ["brightness", "contrast", "exposure"];
@@ -130,12 +137,36 @@ function updateImage(photo) {
 
 function panelCount() {
   if (shape === "flat") return Number($("flat-photos").value);
-  if (shape === "cylinder") return cylinderPhotos;
+  if (Object.hasOwn(photoPositions, shape)) return photoPositions[shape];
   return shape === "polygon" ? polygonFaces : 1;
 }
 
-function cylinderAspect(width, height, count) {
-  return Math.PI * width / (height * count);
+function photoLayout(options) {
+  const profile = profiles[options.shape];
+  if (!profile.preserveAspect) return null;
+  const span = surfaceWidth(options) / options.panels;
+  if (!profile.floor) return { aspect: span / options.height };
+
+  // The vessel widens and narrows. Measure along its side and fit to the
+  // narrowest row so a photo at 100% stays inside its position.
+  const steps = 128;
+  const radii = Array.from({ length: steps + 1 }, (_, row) => profile.point(0.5, 1 - row / steps, 0, options)[2]);
+  const lengths = [0];
+  for (let row = 1; row <= steps; row++) {
+    lengths.push(lengths[row - 1] + Math.hypot(options.height / steps, radii[row] - radii[row - 1]));
+  }
+  const minimum = Math.min(...radii);
+  const total = lengths[steps];
+  return {
+    aspect: span * (minimum / (options.width / 2)) / total,
+    map(v) {
+      const row = v * steps;
+      const index = Math.min(steps - 1, Math.floor(row)), fraction = row - index;
+      const radius = radii[index] + (radii[index + 1] - radii[index]) * fraction;
+      const length = lengths[index] + (lengths[index + 1] - lengths[index]) * fraction;
+      return { v: length / total, widthScale: radius / minimum };
+    }
+  };
 }
 
 function showPhoto() {
@@ -154,8 +185,12 @@ function showPhoto() {
   if (photo) {
     const bitmap = photo.preview;
     const originalAspect = bitmap.width / bitmap.height;
-    const wrapAspect = cylinderAspect($("width").valueAsNumber, $("height").valueAsNumber, cylinderPhotos);
-    const aspect = shape === "cylinder" && wrapAspect > 0 && Number.isFinite(wrapAspect) ? wrapAspect : originalAspect;
+    const fitted = photoLayout({
+      shape, width: $("width").valueAsNumber, height: $("height").valueAsNumber,
+      panels: panelCount(), "arc-angle": $("arc-angle").valueAsNumber,
+      variant: $(shape + "-profile")?.value
+    })?.aspect;
+    const aspect = fitted > 0 && Number.isFinite(fitted) ? fitted : originalAspect;
     const height = Math.min(thumb.height, thumb.width / aspect);
     const width = height * aspect;
     const left = (thumb.width - width) / 2, top = (thumb.height - height) / 2;
@@ -182,10 +217,11 @@ function renderSlots() {
   const count = panelCount();
   activePhoto = Math.min(activePhoto, count - 1);
   $("flat-photos-field").hidden = shape !== "flat";
-  $("cylinder-photos-field").hidden = shape !== "cylinder";
-  $("cylinder-photos-count").textContent = count === 1 ? "1 posición en el cilindro" : count + " posiciones en el cilindro";
-  $("cylinder-remove").disabled = count === 1;
-  $("file").multiple = shape !== "cone";
+  const adjustable = Object.hasOwn(photoPositions, shape);
+  $("wrap-photos-field").hidden = !adjustable;
+  $("wrap-photos-count").textContent = count === 1 ? "1 posición de foto" : count + " posiciones de foto";
+  $("wrap-remove").disabled = count === 1;
+  $("file").multiple = adjustable || shape === "flat" || shape === "polygon";
   $("photo-hint").textContent = $("file").multiple ? "Selecciona o arrastra fotos" : "Selecciona o arrastra una foto";
   const slots = $("photo-slots");
   slots.hidden = count === 1;
@@ -209,13 +245,13 @@ function renderSlots() {
   showPhoto();
 }
 
-function samplePhoto(index, u, v, aspect = null) {
+function samplePhoto(index, u, v, aspect = null, widthScale = 1) {
   const photo = photos[index];
   if (!photo) return 1;
   const raster = photo.raster;
   const zoom = photo["photo-zoom"] / 100;
   const ratio = aspect ? aspect / (raster.width / raster.height) : 1;
-  u = 0.5 + (u - 0.5) * Math.max(1, ratio) / zoom;
+  u = 0.5 + (u - 0.5) * Math.max(1, ratio) * widthScale / zoom;
   v = 0.5 + (v - 0.5) * Math.max(1, 1 / ratio) / zoom;
   if (u < 0 || v < 0 || u > 1 || v > 1) return 1;
   const x = u * (raster.width - 1), y = v * (raster.height - 1);
@@ -229,24 +265,35 @@ function samplePhoto(index, u, v, aspect = null) {
   return upperTone * (1 - y + iy) + lowerTone * (y - iy);
 }
 
-function sample(u, v, options) {
+function sample(u, v, options, layout = photoLayout(options)) {
   const count = options.panels;
-  const aspect = options.shape === "cylinder" ? cylinderAspect(options.width, options.height, count) : null;
-  if (count === 1) return samplePhoto(0, u, v, aspect);
+  const mapped = layout?.map?.(v);
+  const row = mapped?.v ?? v;
+  const widthScale = mapped?.widthScale ?? 1;
+  const aspect = layout?.aspect;
+  if (count === 1) return samplePhoto(0, u, row, aspect, widthScale);
   const section = u * count;
   const seam = Math.round(section);
   if (Math.abs(section - seam) < 1e-8 &&
       (profiles[options.shape].closed || (seam > 0 && seam < count))) {
     const left = (seam + count - 1) % count;
-    return (samplePhoto(left, 1, v, aspect) + samplePhoto(seam % count, 0, v, aspect)) / 2;
+    return (samplePhoto(left, 1, row, aspect, widthScale) + samplePhoto(seam % count, 0, row, aspect, widthScale)) / 2;
   }
   const index = Math.min(count - 1, Math.floor(section));
-  return samplePhoto(index, section - index, v, aspect);
+  return samplePhoto(index, section - index, row, aspect, widthScale);
+}
+
+function buildPhotoMesh(options, resolution, connection) {
+  const layout = photoLayout(options);
+  return build(options, (u, v) => sample(u, v, options, layout), resolution, connection);
 }
 
 function settings() {
   const options = { shape, panels: panelCount() };
-  for (const id of controls) {
+  if (profiles[shape].variants) options.variant = $(shape + "-profile").value;
+  const field = profiles[shape].field;
+  const activeControls = shapeFields.includes(field) ? [...controls, field] : controls;
+  for (const id of activeControls) {
     const input = $(id);
     if (!input.validity.valid || input.value === "") {
       throw new Error("Revisa los límites de las dimensiones y el grosor.");
@@ -260,7 +307,7 @@ function settings() {
       throw new Error("Revisa el ancho y la altura del borde.");
     }
     const width = widthInput.valueAsNumber, rise = riseInput.valueAsNumber;
-    const span = profiles[shape].closed ? options.height : Math.min(options.width, options.height);
+    const span = profiles[shape].closed ? options.height : Math.min(surfaceWidth(options), options.height);
     if (2 * (width + borderRamp(width)) >= span) {
       throw new Error("Reduce el ancho del borde para dejar espacio para la imagen.");
     }
@@ -273,10 +320,10 @@ function regenerate() {
   $("border-options").hidden = !$("border-enabled").checked;
   $("border-note").textContent = profiles[shape].closed ?
     "En los cantos superior e inferior. La altura se suma al grosor máximo." :
-    "En los cuatro lados. La altura se suma al grosor máximo.";
+    "En todo el contorno abierto. La altura se suma al grosor máximo.";
   $("border-note").removeAttribute("data-invalid");
   try {
-    mesh = build(settings(), sample);
+    mesh = buildPhotoMesh(settings());
   } catch (error) {
     $("status").textContent = error.message;
     if ($("border-enabled").checked && error.message.includes("borde")) {
@@ -292,7 +339,7 @@ function regenerate() {
   $("export").disabled = false;
   $("status").textContent = renderer ? "Las fotografías se procesan en tu navegador." : "Vista 3D no disponible. Puedes seguir exportando STL.";
   const { width, height } = mesh.options;
-  $("size").textContent = `${profiles[shape].closed ? "Ø " : ""}${width} × ${height} mm`;
+  $("size").textContent = `${shape !== "flat" ? "Ø " : ""}${width} × ${height} mm`;
   updateMount();
 }
 
@@ -322,7 +369,7 @@ function updateMount() {
     }
   }
   $("lamp-export").disabled = !mountMesh;
-  $("lamp-join").disabled = !mountMesh;
+  $("lamp-join").disabled = !mountMesh || !LampMount.supportsJoined(shape);
   $("lamp-view").disabled = !mountMesh || !renderer;
   renderer?.upload(mesh, mountMesh);
   redraw();
@@ -465,8 +512,12 @@ function chooseShape(key) {
   $("lamp-toggle").hidden = !LampMount.supports(key);
   $("lamp-unavailable").hidden = LampMount.supports(key);
   $("lamp-options").hidden = !LampMount.supports(key) || !$("lamp-enabled").checked;
-  $("width-caption").textContent = selected.closed ? "Diámetro base" : "Ancho";
-  for (const field of ["sides", "top"]) {
+  $("lamp-join").hidden = !LampMount.supportsJoined(key);
+  $("width-caption").textContent = key === "flat" ? "Ancho" : "Diámetro base";
+  $("shape-note").hidden = !shapeNotes[key];
+  $("shape-note").textContent = shapeNotes[key] ?? "";
+  for (const vessel of vesselShapes) $(vessel + "-profile-field").hidden = vessel !== key;
+  for (const field of ["sides", "top", ...shapeFields]) {
     $(field + "-field").hidden = selected.field !== field;
     if (selected.field !== field && (!$(field).validity.valid || !$(field).value)) {
       $(field).value = field === "sides" ? polygonFaces : $(field).defaultValue;
@@ -530,11 +581,12 @@ $("preset-form").onsubmit = event => {
   try {
     const presets = readPresets();
     const previous = presets.findIndex(preset => preset.name === name);
-    const values = Object.fromEntries([...presetFields, ...borderFields].map(id => {
+    const fields = [...presetFields, ...borderFields, ...shapeFields, ...vesselShapes.map(key => key + "-profile")];
+    const values = Object.fromEntries(fields.map(id => {
       const control = $(id);
       return [id, control.validity.valid && control.value ? control.value : control.defaultValue];
     }));
-    const preset = { name, shape, lamp, backlight, border: $("border-enabled").checked, cylinderPhotos, values };
+    const preset = { name, shape, lamp, backlight, border: $("border-enabled").checked, photoPositions, values };
     if (previous < 0) presets.push(preset);
     else presets[previous] = preset;
     writePresets(presets, name, previous < 0 ? "Preajuste guardado." : "Preajuste actualizado.");
@@ -549,10 +601,18 @@ $("preset-load").onclick = () => {
     const preset = readPresets().find(item => item.name === $("preset-list").value);
     if (!preset) { refreshPresets(); return; }
     for (const id of presetFields) $(id).value = preset.values[id];
-    for (const id of borderFields) $(id).value = preset.values[id] ?? $(id).defaultValue;
+    for (const id of [...borderFields, ...shapeFields]) $(id).value = preset.values[id] ?? $(id).defaultValue;
+    for (const key of vesselShapes) {
+      const id = key + "-profile";
+      const variant = preset.values[id];
+      $(id).value = Object.hasOwn(profiles[key].variants, variant) ? variant : $(id).options[0].value;
+    }
     $("border-enabled").checked = preset.border === true;
     polygonFaces = $("sides").valueAsNumber;
-    cylinderPhotos = Number.isSafeInteger(preset.cylinderPhotos) && preset.cylinderPhotos > 0 ? preset.cylinderPhotos : 1;
+    for (const key of Object.keys(photoPositions)) {
+      const count = preset.photoPositions?.[key] ?? (key === "cylinder" ? preset.cylinderPhotos : 1);
+      photoPositions[key] = Number.isSafeInteger(count) && count > 0 ? count : 1;
+    }
     $("lamp-enabled").checked = preset.lamp === true;
     $("preset-name").value = preset.name;
     $("light-value").textContent = $("light").value + " %";
@@ -584,7 +644,7 @@ async function importPhotos(files) {
   if (shape === "flat" && files.length > 1) {
     $("flat-photos").value = Math.max(panelCount(), Math.min(3, files.length));
   }
-  if (shape === "cylinder") cylinderPhotos = Math.max(cylinderPhotos, files.length);
+  if (Object.hasOwn(photoPositions, shape)) photoPositions[shape] = Math.max(photoPositions[shape], files.length);
   const capacity = panelCount();
   const start = files.length === 1 ? activePhoto : 0;
   const selected = files.slice(0, capacity - start);
@@ -629,23 +689,28 @@ for (const [key, profile] of Object.entries(profiles)) {
   button.addEventListener("click", () => chooseShape(key));
   $("shapes").append(button);
 }
-for (const id of controls) $(id).addEventListener("input", () => {
+for (const key of vesselShapes) {
+  const select = $(key + "-profile");
+  for (const [value, variant] of Object.entries(profiles[key].variants)) select.add(new Option(variant.label, value));
+  select.onchange = () => { showPhoto(); regenerate(); };
+}
+for (const id of [...controls, ...shapeFields]) $(id).addEventListener("input", () => {
   if (id === "sides" && $("sides").value && $("sides").validity.valid) {
     polygonFaces = $("sides").valueAsNumber;
     renderSlots();
   }
-  if (shape === "cylinder" && (id === "width" || id === "height")) showPhoto();
+  if (profiles[shape].preserveAspect && ["width", "height", "arc-angle"].includes(id)) showPhoto();
   regenerate();
 });
 $("flat-photos").onchange = () => { renderSlots(); regenerate(); };
-$("cylinder-add").onclick = () => {
-  activePhoto = cylinderPhotos++;
+$("wrap-add").onclick = () => {
+  activePhoto = photoPositions[shape]++;
   renderSlots();
   regenerate();
 };
-$("cylinder-remove").onclick = () => {
-  if (cylinderPhotos <= 1) return;
-  cylinderPhotos--;
+$("wrap-remove").onclick = () => {
+  if (photoPositions[shape] <= 1) return;
+  photoPositions[shape]--;
   renderSlots();
   regenerate();
 };
@@ -761,7 +826,7 @@ function exportName() {
 }
 $("export").onclick = () => {
   try {
-    downloadMesh(build(settings(), sample, 380), `litum3d-${exportName()}-${shape}`, "Litofanía STL preparada");
+    downloadMesh(buildPhotoMesh(settings(), 380), `litum3d-${exportName()}-${shape}`, "Litofanía STL preparada");
   } catch (error) {
     $("status").textContent = error.message;
   }
@@ -774,7 +839,7 @@ $("lamp-join").onclick = () => {
     const shade = settings();
     const options = mountSettings();
     const mount = LampMount.build(shade, options, true);
-    const screen = build(shade, sample, 380, mount.connection);
+    const screen = buildPhotoMesh(shade, 380, mount.connection);
     const joined = LampMount.join(screen, mount);
     downloadMesh(joined, `litum3d-lampara-${exportName()}-${shape}`, "Pieza unida STL preparada");
   } catch (error) {

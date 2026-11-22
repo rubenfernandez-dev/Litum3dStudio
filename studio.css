@@ -5,3 +5,4 @@
 .preset-row{display:flex;align-items:end;gap:6px;margin-bottom:8px}.preset-row label{flex:1;min-width:0;font-size:13px;color:#c4bfb0}.preset-row select,.preset-row input{display:block;width:100%;height:32px;margin-top:4px;padding:4px 7px;color:var(--paper);background:#131411;border:1px solid #3b3b33;border-radius:6px;font:inherit}.preset-row button{height:32px;padding:0 8px;border:1px solid #494137;border-radius:6px;background:#26231d;font-size:12px}.preset-row button:disabled{opacity:.45;cursor:not-allowed}
 .border-note{margin-top:8px}#border-options{margin-top:8px}
 .slot-actions{display:flex;gap:5px}.slot-actions button{width:32px;height:30px;padding:0;background:#26231d;border:1px solid #494137;border-radius:6px;font-size:16px}.slot-actions button:disabled{opacity:.45;cursor:not-allowed}
+.shape-note{margin-top:9px}
