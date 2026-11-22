@@ -76,11 +76,11 @@ const LithoGeometry = (() => {
     for (let y = 0; y <= ny; y++) {
       for (let x = 0; x < columns; x++) {
         const u = positions[x], v = rows[y];
-        let tone = sample(u, 1 - v);
+        let tone = sample(u, 1 - v, options);
         if (profile.closed && panels === 1) {
           // Blend both photo edges into one shared, continuous relief seam.
           const blend = Math.max(0, 1 - Math.min(u, 1 - u) * 26);
-          if (blend) tone += ((sample(0, 1 - v) + sample(1, 1 - v)) / 2 - tone) * blend;
+          if (blend) tone += ((sample(0, 1 - v, options) + sample(1, 1 - v, options)) / 2 - tone) * blend;
         }
         let thickness = options.min + (options.max - options.min) * (options.invert ? tone : 1 - tone);
         if (border) {

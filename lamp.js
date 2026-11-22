@@ -26,6 +26,9 @@ const LampMount = (() => {
     const ringResolution = joined ? 380 : 192;
     const angles = Array.from({ length: ringResolution }, (_, i) => i * tau / ringResolution);
     if (polygon) for (let side = 0; side < shade.sides; side++) angles.push(side * tau / shade.sides);
+    if (joined && shade.shape === "cylinder") {
+      for (let panel = 1; panel < shade.panels; panel++) angles.push(panel * tau / shade.panels);
+    }
     for (let arm = 0; arm < arms; arm++) {
       angles.push((arm * period + armHalf) % tau, (arm * period - armHalf + tau) % tau);
     }

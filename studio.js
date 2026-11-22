@@ -10,6 +10,7 @@ let backlight = true;
 let mesh, mountMesh, frame, renderer;
 let activePhoto = 0;
 let polygonFaces = 6;
+let cylinderPhotos = 1;
 const photos = [];
 const pendingImports = [];
 const toneControls = ["brightness", "contrast", "exposure"];
@@ -105,9 +106,8 @@ function updateImage(photo) {
   bitmap.width = swapped ? original.height : original.width;
   bitmap.height = swapped ? original.width : original.height;
   const context = bitmap.getContext("2d", { willReadFrequently: true });
-  const magnification = photo["photo-zoom"] / 100;
   context.translate(bitmap.width / 2, bitmap.height / 2);
-  context.scale((mirrored ? -1 : 1) * magnification, magnification);
+  context.scale(mirrored ? -1 : 1, 1);
   context.rotate(rotation * Math.PI / 2);
   context.drawImage(original, -original.width / 2, -original.height / 2);
   const image = context.getImageData(0, 0, bitmap.width, bitmap.height);
@@ -130,7 +130,12 @@ function updateImage(photo) {
 
 function panelCount() {
   if (shape === "flat") return Number($("flat-photos").value);
+  if (shape === "cylinder") return cylinderPhotos;
   return shape === "polygon" ? polygonFaces : 1;
+}
+
+function cylinderAspect(width, height, count) {
+  return Math.PI * width / (height * count);
 }
 
 function showPhoto() {
@@ -148,9 +153,22 @@ function showPhoto() {
   preview.fillRect(0, 0, thumb.width, thumb.height);
   if (photo) {
     const bitmap = photo.preview;
-    const scale = Math.min(thumb.width / bitmap.width, thumb.height / bitmap.height);
+    const originalAspect = bitmap.width / bitmap.height;
+    const wrapAspect = cylinderAspect($("width").valueAsNumber, $("height").valueAsNumber, cylinderPhotos);
+    const aspect = shape === "cylinder" && wrapAspect > 0 && Number.isFinite(wrapAspect) ? wrapAspect : originalAspect;
+    const height = Math.min(thumb.height, thumb.width / aspect);
+    const width = height * aspect;
+    const left = (thumb.width - width) / 2, top = (thumb.height - height) / 2;
+    const scale = Math.min(width / bitmap.width, height / bitmap.height) * photo["photo-zoom"] / 100;
+    preview.save();
+    preview.beginPath();
+    preview.rect(left, top, width, height);
+    preview.clip();
+    preview.fillStyle = "#fff";
+    preview.fillRect(left, top, width, height);
     preview.drawImage(bitmap, (thumb.width - bitmap.width * scale) / 2,
       (thumb.height - bitmap.height * scale) / 2, bitmap.width * scale, bitmap.height * scale);
+    preview.restore();
   }
   for (const id of photoControls) {
     $(id).value = photo?.[id] ?? $(id).defaultValue;
@@ -164,9 +182,11 @@ function renderSlots() {
   const count = panelCount();
   activePhoto = Math.min(activePhoto, count - 1);
   $("flat-photos-field").hidden = shape !== "flat";
-  $("photo-hint").textContent = shape === "flat" || shape === "polygon" ?
-    "Selecciona o arrastra fotos" : "Selecciona o arrastra una foto";
-  $("file").multiple = shape === "flat" || shape === "polygon";
+  $("cylinder-photos-field").hidden = shape !== "cylinder";
+  $("cylinder-photos-count").textContent = count === 1 ? "1 posición en el cilindro" : count + " posiciones en el cilindro";
+  $("cylinder-remove").disabled = count === 1;
+  $("file").multiple = shape !== "cone";
+  $("photo-hint").textContent = $("file").multiple ? "Selecciona o arrastra fotos" : "Selecciona o arrastra una foto";
   const slots = $("photo-slots");
   slots.hidden = count === 1;
   slots.replaceChildren();
@@ -189,9 +209,15 @@ function renderSlots() {
   showPhoto();
 }
 
-function samplePhoto(index, u, v) {
-  const raster = photos[index]?.raster;
-  if (!raster) return 1;
+function samplePhoto(index, u, v, aspect = null) {
+  const photo = photos[index];
+  if (!photo) return 1;
+  const raster = photo.raster;
+  const zoom = photo["photo-zoom"] / 100;
+  const ratio = aspect ? aspect / (raster.width / raster.height) : 1;
+  u = 0.5 + (u - 0.5) * Math.max(1, ratio) / zoom;
+  v = 0.5 + (v - 0.5) * Math.max(1, 1 / ratio) / zoom;
+  if (u < 0 || v < 0 || u > 1 || v > 1) return 1;
   const x = u * (raster.width - 1), y = v * (raster.height - 1);
   const ix = Math.floor(x), iy = Math.floor(y);
   function luminance(column, row) {
@@ -203,18 +229,19 @@ function samplePhoto(index, u, v) {
   return upperTone * (1 - y + iy) + lowerTone * (y - iy);
 }
 
-function sample(u, v) {
-  const count = panelCount();
-  if (count === 1) return samplePhoto(0, u, v);
+function sample(u, v, options) {
+  const count = options.panels;
+  const aspect = options.shape === "cylinder" ? cylinderAspect(options.width, options.height, count) : null;
+  if (count === 1) return samplePhoto(0, u, v, aspect);
   const section = u * count;
   const seam = Math.round(section);
   if (Math.abs(section - seam) < 1e-8 &&
-      (shape === "polygon" || (seam > 0 && seam < count))) {
+      (profiles[options.shape].closed || (seam > 0 && seam < count))) {
     const left = (seam + count - 1) % count;
-    return (samplePhoto(left, 1, v) + samplePhoto(seam % count, 0, v)) / 2;
+    return (samplePhoto(left, 1, v, aspect) + samplePhoto(seam % count, 0, v, aspect)) / 2;
   }
   const index = Math.min(count - 1, Math.floor(section));
-  return samplePhoto(index, section - index, v);
+  return samplePhoto(index, section - index, v, aspect);
 }
 
 function settings() {
@@ -507,7 +534,7 @@ $("preset-form").onsubmit = event => {
       const control = $(id);
       return [id, control.validity.valid && control.value ? control.value : control.defaultValue];
     }));
-    const preset = { name, shape, lamp, backlight, border: $("border-enabled").checked, values };
+    const preset = { name, shape, lamp, backlight, border: $("border-enabled").checked, cylinderPhotos, values };
     if (previous < 0) presets.push(preset);
     else presets[previous] = preset;
     writePresets(presets, name, previous < 0 ? "Preajuste guardado." : "Preajuste actualizado.");
@@ -525,6 +552,7 @@ $("preset-load").onclick = () => {
     for (const id of borderFields) $(id).value = preset.values[id] ?? $(id).defaultValue;
     $("border-enabled").checked = preset.border === true;
     polygonFaces = $("sides").valueAsNumber;
+    cylinderPhotos = Number.isSafeInteger(preset.cylinderPhotos) && preset.cylinderPhotos > 0 ? preset.cylinderPhotos : 1;
     $("lamp-enabled").checked = preset.lamp === true;
     $("preset-name").value = preset.name;
     $("light-value").textContent = $("light").value + " %";
@@ -556,6 +584,7 @@ async function importPhotos(files) {
   if (shape === "flat" && files.length > 1) {
     $("flat-photos").value = Math.max(panelCount(), Math.min(3, files.length));
   }
+  if (shape === "cylinder") cylinderPhotos = Math.max(cylinderPhotos, files.length);
   const capacity = panelCount();
   const start = files.length === 1 ? activePhoto : 0;
   const selected = files.slice(0, capacity - start);
@@ -605,9 +634,21 @@ for (const id of controls) $(id).addEventListener("input", () => {
     polygonFaces = $("sides").valueAsNumber;
     renderSlots();
   }
+  if (shape === "cylinder" && (id === "width" || id === "height")) showPhoto();
   regenerate();
 });
 $("flat-photos").onchange = () => { renderSlots(); regenerate(); };
+$("cylinder-add").onclick = () => {
+  activePhoto = cylinderPhotos++;
+  renderSlots();
+  regenerate();
+};
+$("cylinder-remove").onclick = () => {
+  if (cylinderPhotos <= 1) return;
+  cylinderPhotos--;
+  renderSlots();
+  regenerate();
+};
 for (const id of ["border-enabled", ...borderFields]) $(id).addEventListener("input", regenerate);
 function editImage() {
   const photo = photos[activePhoto];
