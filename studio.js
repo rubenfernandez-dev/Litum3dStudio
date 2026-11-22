@@ -1,8 +1,14 @@
 "use strict";
 const $ = id => document.getElementById(id);
 const canvas = $("view");
-const { profiles, build, borderRamp, stl } = LithoGeometry;
+const { profiles, build, borderRamp, surfaceWidth, stl } = LithoGeometry;
 const controls = ["width", "height", "sides", "top", "min", "max"];
+const shapeFields = ["arc-angle", "base-thickness"];
+const shapeNotes = {
+  arc: "Pantalla curva abierta. El soporte circular encaja bajo el arco y se exporta por separado.",
+  candle: "Para velas LED. El recipiente queda abierto por arriba.",
+  vase: "Florero para flores secas o con un recipiente interior para el agua."
+};
 const initialCamera = { yaw: -0.33, pitch: 0.19, zoom: 1 };
 const camera = { ...initialCamera };
 let shape = "flat";
@@ -134,8 +140,8 @@ function panelCount() {
   return shape === "polygon" ? polygonFaces : 1;
 }
 
-function cylinderAspect(width, height, count) {
-  return Math.PI * width / (height * count);
+function wrapAspect(options) {
+  return surfaceWidth(options) / (options.height * options.panels);
 }
 
 function showPhoto() {
@@ -154,8 +160,11 @@ function showPhoto() {
   if (photo) {
     const bitmap = photo.preview;
     const originalAspect = bitmap.width / bitmap.height;
-    const wrapAspect = cylinderAspect($("width").valueAsNumber, $("height").valueAsNumber, cylinderPhotos);
-    const aspect = shape === "cylinder" && wrapAspect > 0 && Number.isFinite(wrapAspect) ? wrapAspect : originalAspect;
+    const fitted = profiles[shape].preserveAspect ? wrapAspect({
+      shape, width: $("width").valueAsNumber, height: $("height").valueAsNumber,
+      panels: panelCount(), "arc-angle": $("arc-angle").valueAsNumber
+    }) : 0;
+    const aspect = fitted > 0 && Number.isFinite(fitted) ? fitted : originalAspect;
     const height = Math.min(thumb.height, thumb.width / aspect);
     const width = height * aspect;
     const left = (thumb.width - width) / 2, top = (thumb.height - height) / 2;
@@ -185,7 +194,7 @@ function renderSlots() {
   $("cylinder-photos-field").hidden = shape !== "cylinder";
   $("cylinder-photos-count").textContent = count === 1 ? "1 posición en el cilindro" : count + " posiciones en el cilindro";
   $("cylinder-remove").disabled = count === 1;
-  $("file").multiple = shape !== "cone";
+  $("file").multiple = ["flat", "cylinder", "polygon"].includes(shape);
   $("photo-hint").textContent = $("file").multiple ? "Selecciona o arrastra fotos" : "Selecciona o arrastra una foto";
   const slots = $("photo-slots");
   slots.hidden = count === 1;
@@ -231,7 +240,7 @@ function samplePhoto(index, u, v, aspect = null) {
 
 function sample(u, v, options) {
   const count = options.panels;
-  const aspect = options.shape === "cylinder" ? cylinderAspect(options.width, options.height, count) : null;
+  const aspect = profiles[options.shape].preserveAspect ? wrapAspect(options) : null;
   if (count === 1) return samplePhoto(0, u, v, aspect);
   const section = u * count;
   const seam = Math.round(section);
@@ -246,7 +255,9 @@ function sample(u, v, options) {
 
 function settings() {
   const options = { shape, panels: panelCount() };
-  for (const id of controls) {
+  const field = profiles[shape].field;
+  const activeControls = shapeFields.includes(field) ? [...controls, field] : controls;
+  for (const id of activeControls) {
     const input = $(id);
     if (!input.validity.valid || input.value === "") {
       throw new Error("Revisa los límites de las dimensiones y el grosor.");
@@ -260,7 +271,7 @@ function settings() {
       throw new Error("Revisa el ancho y la altura del borde.");
     }
     const width = widthInput.valueAsNumber, rise = riseInput.valueAsNumber;
-    const span = profiles[shape].closed ? options.height : Math.min(options.width, options.height);
+    const span = profiles[shape].closed ? options.height : Math.min(surfaceWidth(options), options.height);
     if (2 * (width + borderRamp(width)) >= span) {
       throw new Error("Reduce el ancho del borde para dejar espacio para la imagen.");
     }
@@ -273,7 +284,7 @@ function regenerate() {
   $("border-options").hidden = !$("border-enabled").checked;
   $("border-note").textContent = profiles[shape].closed ?
     "En los cantos superior e inferior. La altura se suma al grosor máximo." :
-    "En los cuatro lados. La altura se suma al grosor máximo.";
+    "En todo el contorno abierto. La altura se suma al grosor máximo.";
   $("border-note").removeAttribute("data-invalid");
   try {
     mesh = build(settings(), sample);
@@ -292,7 +303,7 @@ function regenerate() {
   $("export").disabled = false;
   $("status").textContent = renderer ? "Las fotografías se procesan en tu navegador." : "Vista 3D no disponible. Puedes seguir exportando STL.";
   const { width, height } = mesh.options;
-  $("size").textContent = `${profiles[shape].closed ? "Ø " : ""}${width} × ${height} mm`;
+  $("size").textContent = `${shape !== "flat" ? "Ø " : ""}${width} × ${height} mm`;
   updateMount();
 }
 
@@ -322,7 +333,7 @@ function updateMount() {
     }
   }
   $("lamp-export").disabled = !mountMesh;
-  $("lamp-join").disabled = !mountMesh;
+  $("lamp-join").disabled = !mountMesh || !LampMount.supportsJoined(shape);
   $("lamp-view").disabled = !mountMesh || !renderer;
   renderer?.upload(mesh, mountMesh);
   redraw();
@@ -465,8 +476,11 @@ function chooseShape(key) {
   $("lamp-toggle").hidden = !LampMount.supports(key);
   $("lamp-unavailable").hidden = LampMount.supports(key);
   $("lamp-options").hidden = !LampMount.supports(key) || !$("lamp-enabled").checked;
-  $("width-caption").textContent = selected.closed ? "Diámetro base" : "Ancho";
-  for (const field of ["sides", "top"]) {
+  $("lamp-join").hidden = !LampMount.supportsJoined(key);
+  $("width-caption").textContent = key === "flat" ? "Ancho" : "Diámetro base";
+  $("shape-note").hidden = !shapeNotes[key];
+  $("shape-note").textContent = shapeNotes[key] ?? "";
+  for (const field of ["sides", "top", ...shapeFields]) {
     $(field + "-field").hidden = selected.field !== field;
     if (selected.field !== field && (!$(field).validity.valid || !$(field).value)) {
       $(field).value = field === "sides" ? polygonFaces : $(field).defaultValue;
@@ -530,7 +544,7 @@ $("preset-form").onsubmit = event => {
   try {
     const presets = readPresets();
     const previous = presets.findIndex(preset => preset.name === name);
-    const values = Object.fromEntries([...presetFields, ...borderFields].map(id => {
+    const values = Object.fromEntries([...presetFields, ...borderFields, ...shapeFields].map(id => {
       const control = $(id);
       return [id, control.validity.valid && control.value ? control.value : control.defaultValue];
     }));
@@ -549,7 +563,7 @@ $("preset-load").onclick = () => {
     const preset = readPresets().find(item => item.name === $("preset-list").value);
     if (!preset) { refreshPresets(); return; }
     for (const id of presetFields) $(id).value = preset.values[id];
-    for (const id of borderFields) $(id).value = preset.values[id] ?? $(id).defaultValue;
+    for (const id of [...borderFields, ...shapeFields]) $(id).value = preset.values[id] ?? $(id).defaultValue;
     $("border-enabled").checked = preset.border === true;
     polygonFaces = $("sides").valueAsNumber;
     cylinderPhotos = Number.isSafeInteger(preset.cylinderPhotos) && preset.cylinderPhotos > 0 ? preset.cylinderPhotos : 1;
@@ -629,12 +643,12 @@ for (const [key, profile] of Object.entries(profiles)) {
   button.addEventListener("click", () => chooseShape(key));
   $("shapes").append(button);
 }
-for (const id of controls) $(id).addEventListener("input", () => {
+for (const id of [...controls, ...shapeFields]) $(id).addEventListener("input", () => {
   if (id === "sides" && $("sides").value && $("sides").validity.valid) {
     polygonFaces = $("sides").valueAsNumber;
     renderSlots();
   }
-  if (shape === "cylinder" && (id === "width" || id === "height")) showPhoto();
+  if (profiles[shape].preserveAspect && ["width", "height", "arc-angle"].includes(id)) showPhoto();
   regenerate();
 });
 $("flat-photos").onchange = () => { renderSlots(); regenerate(); };

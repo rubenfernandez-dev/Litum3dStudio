@@ -69,7 +69,10 @@
           <label>Alto<span class="number"><input id="height" type="number" min="25" max="350" step="1" value="85"><span>mm</span></span></label>
           <label id="sides-field" hidden>Lados<span class="number"><input id="sides" type="number" min="3" max="12" step="1" value="6"></span></label>
           <label id="top-field" hidden>Diámetro superior<span class="number"><input id="top" type="number" min="20" max="100" step="1" value="65"><span>%</span></span></label>
+          <label id="arc-angle-field" hidden>Ángulo del arco<span class="number"><input id="arc-angle" type="number" min="35" max="330" step="1" value="180"><span>°</span></span></label>
+          <label id="base-thickness-field" hidden>Grosor del fondo<span class="number"><input id="base-thickness" type="number" min="1" max="12" step="0.1" value="2.4"><span>mm</span></span></label>
         </div>
+        <p class="control-note shape-note" id="shape-note" hidden></p>
       </section>
       <section>
         <h2>Grosor</h2>
@@ -95,7 +98,7 @@
       </section>
       <section id="lamp-section">
         <h2>Soporte de lámpara</h2>
-        <p class="control-note" id="lamp-unavailable">Disponible para las formas cilíndrica, cónica y poligonal.</p>
+        <p class="control-note" id="lamp-unavailable">Disponible para el arco y las formas cilíndrica, cónica y poligonal.</p>
         <label class="check lamp-toggle" id="lamp-toggle" hidden><input id="lamp-enabled" type="checkbox"> Mostrar soporte en la base</label>
         <div id="lamp-options" hidden>
           <div class="fields">

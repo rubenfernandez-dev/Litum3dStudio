@@ -43,3 +43,9 @@ Activa **Borde perimetral → Añadir borde**. El ancho se mide hacia el interio
 ## Fotos en el cilindro
 
 El cilindro divide la circunferencia en posiciones iguales. Selecciona varias fotos de golpe para crear sus posiciones automáticamente, o usa **+** y **−** para ajustar cuántas caben según el diámetro, el alto y el encuadre. Cada foto conserva sus proporciones, incluso si se usa una sola. El espacio restante se imprime con el grosor mínimo. El número de posiciones también se guarda en los preajustes.
+
+## Arco, portavelas y florero
+
+**Arco** crea una pantalla abierta con ángulo regulable de 35° a 330°. El diámetro es el del círculo del que parte el arco. Puedes añadir un borde que recorre sus cuatro cantos y un soporte circular para lámpara, que se descarga como STL separado.
+
+**Portavelas** y **Florero** tienen un fondo sólido integrado de grosor regulable y una boca abierta. El portavelas está pensado para velas LED. Para flores con agua, usa un recipiente interior. Las medidas específicas de cada forma se pueden guardar en preajustes.

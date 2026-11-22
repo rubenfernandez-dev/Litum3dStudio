@@ -4,11 +4,16 @@ const LampMount = (() => {
   const shelfHeight = 2;
 
   function supports(shape) {
+    return shape === "arc" || supportsJoined(shape);
+  }
+
+  function supportsJoined(shape) {
     return ["cylinder", "cone", "polygon"].includes(shape);
   }
 
   function build(shade, { opening, height, wall, arms, armWidth, clearance }, joined = false) {
     if (!supports(shade.shape)) throw new Error("Elige una geometría envolvente para generar el soporte.");
+    if (joined && !supportsJoined(shade.shape)) throw new Error("El soporte del arco se exporta por separado.");
     if (height > shade.height) throw new Error("La altura del soporte debe caber dentro de la litofanía.");
     const polygon = shade.shape === "polygon";
     const baseRadius = shade.width / 2;
@@ -122,6 +127,6 @@ const LampMount = (() => {
     triangles.set(seams, shade.triangles.length + mount.triangles.length);
     return { vertices, triangles, options: shade.options, bedY: mount.bedY };
   }
-  return { supports, build, join };
+  return { supports, supportsJoined, build, join };
 })();
 if (typeof module !== "undefined") module.exports = LampMount;

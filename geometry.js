@@ -1,16 +1,21 @@
 "use strict";
 const LithoGeometry = (() => {
   const tau = Math.PI * 2;
-  function roundPoint(u, v, thickness, options, scale = 1) {
-    const angle = (u - 0.5) * tau;
+  function roundPoint(u, v, thickness, options, scale = 1, sweep = tau) {
+    const angle = (u - 0.5) * sweep;
     const radius = options.width * scale / 2 + thickness;
     return [Math.sin(angle) * radius, (v - 0.5) * options.height, Math.cos(angle) * radius];
   }
   // Each profile maps the photo coordinates and outward thickness to millimetres.
+  function smoothStep(start, end, v) {
+    const t = Math.min(1, Math.max(0, (v - start) / (end - start)));
+    return t * t * (3 - 2 * t);
+  }
+
   const profiles = {
     flat: { label: "Plana", icon: "▱", closed: false,
       point: (u, v, t, o) => [(u - 0.5) * o.width, (v - 0.5) * o.height, t] },
-    cylinder: { label: "Cilíndrica", icon: "◉", closed: true, point: roundPoint },
+    cylinder: { label: "Cilíndrica", icon: "◉", closed: true, preserveAspect: true, point: roundPoint },
     cone: { label: "Cónica", icon: "△", closed: true, field: "top",
       point: (u, v, t, o) => roundPoint(u, v, t, o, 1 - v * (1 - o.top / 100)) },
     polygon: { label: "Poligonal", icon: "⬡", closed: true, field: "sides",
@@ -27,8 +32,25 @@ const LithoGeometry = (() => {
           (v - 0.5) * o.height,
           radius * (Math.cos(a) * (1 - fraction) + Math.cos(b) * fraction)
         ];
+      } },
+    arc: { label: "Arco", icon: "◠", closed: false, field: "arc-angle", preserveAspect: true,
+      surfaceWidth: o => Math.PI * o.width * o["arc-angle"] / 360,
+      point: (u, v, t, o) => roundPoint(u, v, t, o, 1, tau * o["arc-angle"] / 360) },
+    candle: { label: "Portavelas", icon: "⊔", closed: true, field: "base-thickness", preserveAspect: true, floor: true,
+      point: (u, v, t, o) => roundPoint(u, v, t, o, 1 + 0.1 * v) },
+    vase: { label: "Florero", icon: "⚱", closed: true, field: "base-thickness", preserveAspect: true, floor: true,
+      point(u, v, t, o) {
+        const belly = 0.28 * Math.sin(Math.PI * v) ** 2;
+        const neck = 0.36 * smoothStep(0.46, 0.82, v);
+        const lip = 0.18 * smoothStep(0.85, 1, v);
+        return roundPoint(u, v, t, o, 1 + belly - neck + lip);
       } }
   };
+
+  function surfaceWidth(options) {
+    const profile = profiles[options.shape];
+    return profile.surfaceWidth?.(options) ?? options.width * (profile.closed ? Math.PI : 1);
+  }
 
   function borderRamp(width) {
     return Math.min(0.6, width * 0.3);
@@ -50,8 +72,8 @@ const LithoGeometry = (() => {
 
   function build(options, sample, resolution = 180, connection = null) {
     const profile = profiles[options.shape];
-    const circumference = options.width * (profile.closed ? Math.PI : 1);
-    const ratio = circumference / options.height;
+    const surface = surfaceWidth(options);
+    const ratio = surface / options.height;
     const panels = options.panels || 1;
     const horizontal = Math.max(32, panels * 24, Math.round(resolution * Math.min(1, ratio)));
     const baseColumns = profile.segments ? profile.segments(horizontal, options) : Math.ceil(horizontal / panels) * panels;
@@ -62,16 +84,17 @@ const LithoGeometry = (() => {
     const ramp = border ? borderRamp(border.width) : 0;
     if (border) {
       rows = refine(rows, edgeSamples(options.height, border.width, ramp));
-      if (!profile.closed) positions = refine(positions, edgeSamples(options.width, border.width, ramp));
+      if (!profile.closed) positions = refine(positions, edgeSamples(surface, border.width, ramp));
     }
-    const joinV = connection ? connection.height / options.height : 0;
-    if (connection) rows = refine(rows, [joinV]);
-    const joinRow = connection ? rows.indexOf(joinV) : 0;
+    const innerStart = connection?.height ?? (profile.floor ? options["base-thickness"] : 0);
+    const innerV = innerStart / options.height;
+    if (innerStart) rows = refine(rows, [innerV]);
+    const innerRow = rows.indexOf(innerV);
     const columns = positions.length;
     const nx = columns - Number(!profile.closed);
     const ny = rows.length - 1;
     const layer = columns * rows.length;
-    const vertices = new Float32Array(layer * 2 * 4);
+    const vertices = new Float32Array((layer * 2 + (profile.floor ? 2 : 0)) * 4);
     const triangles = [];
     for (let y = 0; y <= ny; y++) {
       for (let x = 0; x < columns; x++) {
@@ -85,7 +108,7 @@ const LithoGeometry = (() => {
         let thickness = options.min + (options.max - options.min) * (options.invert ? tone : 1 - tone);
         if (border) {
           let edgeDistance = Math.min(v, 1 - v) * options.height;
-          if (!profile.closed) edgeDistance = Math.min(edgeDistance, Math.min(u, 1 - u) * options.width);
+          if (!profile.closed) edgeDistance = Math.min(edgeDistance, Math.min(u, 1 - u) * surface);
           const amount = Math.max(0, Math.min(1, (border.width + ramp - edgeDistance) / ramp));
           thickness += (options.max + border.rise - thickness) * amount;
         }
@@ -101,23 +124,34 @@ const LithoGeometry = (() => {
     function rim(a, b) {
       quad(b, a, a + layer, b + layer);
     }
+    if (profile.floor) {
+      const underside = layer * 2;
+      const floorTop = underside + 1;
+      vertices.set([0, -options.height / 2, 0, options["base-thickness"]], underside * 4);
+      vertices.set([0, -options.height / 2 + innerStart, 0, options["base-thickness"]], floorTop * 4);
+      for (let x = 0; x < nx; x++) {
+        const next = (x + 1) % columns;
+        const inner = layer + innerRow * columns;
+        triangles.push(next, x, underside, inner + x, inner + next, floorTop);
+      }
+    }
     for (let y = 0; y < ny; y++) {
       for (let x = 0; x < nx; x++) {
         const a = y * columns + x;
         const b = y * columns + (x + 1) % columns;
         const c = b + columns, d = a + columns;
         quad(a, b, c, d);
-        if (y >= joinRow) quad(a + layer, d + layer, c + layer, b + layer);
-        if (y === 0 && !joinRow) rim(a, b);
+        if (y >= innerRow) quad(a + layer, d + layer, c + layer, b + layer);
+        if (y === 0 && !innerStart) rim(a, b);
         if (y === ny - 1) rim(c, d);
         if (!profile.closed && x === 0) rim(d, a);
         if (!profile.closed && x === nx - 1) rim(b, c);
       }
     }
     const mesh = { vertices, triangles: Uint32Array.from(triangles), options };
-    if (joinRow) {
+    if (connection) {
       mesh.outerRing = Array.from({ length: columns }, (_, index) => index);
-      mesh.innerRing = mesh.outerRing.map(index => index + layer + joinRow * columns);
+      mesh.innerRing = mesh.outerRing.map(index => index + layer + innerRow * columns);
     }
     return mesh;
   }
@@ -145,6 +179,6 @@ const LithoGeometry = (() => {
     }
     return buffer;
   }
-  return { profiles, build, borderRamp, stl };
+  return { profiles, build, borderRamp, surfaceWidth, stl };
 })();
 if (typeof module !== "undefined") module.exports = LithoGeometry;
