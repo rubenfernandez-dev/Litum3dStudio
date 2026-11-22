@@ -4,6 +4,7 @@ const canvas = $("view");
 const { profiles, build, borderRamp, surfaceWidth, stl } = LithoGeometry;
 const controls = ["width", "height", "sides", "top", "min", "max"];
 const shapeFields = ["arc-angle", "base-thickness"];
+const vesselShapes = Object.keys(profiles).filter(key => profiles[key].variants);
 const shapeNotes = {
   arc: "Pantalla curva abierta. El soporte circular encaja bajo el arco y se exporta por separado.",
   candle: "Para velas LED. El recipiente queda abierto por arriba.",
@@ -186,7 +187,8 @@ function showPhoto() {
     const originalAspect = bitmap.width / bitmap.height;
     const fitted = photoLayout({
       shape, width: $("width").valueAsNumber, height: $("height").valueAsNumber,
-      panels: panelCount(), "arc-angle": $("arc-angle").valueAsNumber
+      panels: panelCount(), "arc-angle": $("arc-angle").valueAsNumber,
+      variant: $(shape + "-profile")?.value
     })?.aspect;
     const aspect = fitted > 0 && Number.isFinite(fitted) ? fitted : originalAspect;
     const height = Math.min(thumb.height, thumb.width / aspect);
@@ -288,6 +290,7 @@ function buildPhotoMesh(options, resolution, connection) {
 
 function settings() {
   const options = { shape, panels: panelCount() };
+  if (profiles[shape].variants) options.variant = $(shape + "-profile").value;
   const field = profiles[shape].field;
   const activeControls = shapeFields.includes(field) ? [...controls, field] : controls;
   for (const id of activeControls) {
@@ -513,6 +516,7 @@ function chooseShape(key) {
   $("width-caption").textContent = key === "flat" ? "Ancho" : "Diámetro base";
   $("shape-note").hidden = !shapeNotes[key];
   $("shape-note").textContent = shapeNotes[key] ?? "";
+  for (const vessel of vesselShapes) $(vessel + "-profile-field").hidden = vessel !== key;
   for (const field of ["sides", "top", ...shapeFields]) {
     $(field + "-field").hidden = selected.field !== field;
     if (selected.field !== field && (!$(field).validity.valid || !$(field).value)) {
@@ -577,7 +581,8 @@ $("preset-form").onsubmit = event => {
   try {
     const presets = readPresets();
     const previous = presets.findIndex(preset => preset.name === name);
-    const values = Object.fromEntries([...presetFields, ...borderFields, ...shapeFields].map(id => {
+    const fields = [...presetFields, ...borderFields, ...shapeFields, ...vesselShapes.map(key => key + "-profile")];
+    const values = Object.fromEntries(fields.map(id => {
       const control = $(id);
       return [id, control.validity.valid && control.value ? control.value : control.defaultValue];
     }));
@@ -597,6 +602,11 @@ $("preset-load").onclick = () => {
     if (!preset) { refreshPresets(); return; }
     for (const id of presetFields) $(id).value = preset.values[id];
     for (const id of [...borderFields, ...shapeFields]) $(id).value = preset.values[id] ?? $(id).defaultValue;
+    for (const key of vesselShapes) {
+      const id = key + "-profile";
+      const variant = preset.values[id];
+      $(id).value = Object.hasOwn(profiles[key].variants, variant) ? variant : $(id).options[0].value;
+    }
     $("border-enabled").checked = preset.border === true;
     polygonFaces = $("sides").valueAsNumber;
     for (const key of Object.keys(photoPositions)) {
@@ -678,6 +688,11 @@ for (const [key, profile] of Object.entries(profiles)) {
   button.append(icon, profile.label);
   button.addEventListener("click", () => chooseShape(key));
   $("shapes").append(button);
+}
+for (const key of vesselShapes) {
+  const select = $(key + "-profile");
+  for (const [value, variant] of Object.entries(profiles[key].variants)) select.add(new Option(variant.label, value));
+  select.onchange = () => { showPhoto(); regenerate(); };
 }
 for (const id of [...controls, ...shapeFields]) $(id).addEventListener("input", () => {
   if (id === "sides" && $("sides").value && $("sides").validity.valid) {

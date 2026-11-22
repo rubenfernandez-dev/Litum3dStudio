@@ -6,12 +6,23 @@ const LithoGeometry = (() => {
     const radius = options.width * scale / 2 + thickness;
     return [Math.sin(angle) * radius, (v - 0.5) * options.height, Math.cos(angle) * radius];
   }
-  // Each profile maps the photo coordinates and outward thickness to millimetres.
   function smoothStep(start, end, v) {
     const t = Math.min(1, Math.max(0, (v - start) / (end - start)));
     return t * t * (3 - 2 * t);
   }
 
+  function vessel(label, icon, variants) {
+    const defaultVariant = Object.keys(variants)[0];
+    return {
+      label, icon, closed: true, field: "base-thickness", preserveAspect: true, floor: true, variants,
+      point(u, v, thickness, options) {
+        const variant = Object.hasOwn(variants, options.variant) ? options.variant : defaultVariant;
+        return roundPoint(u, v, thickness, options, variants[variant].scale(v));
+      }
+    };
+  }
+
+  // Each profile maps the photo coordinates and outward thickness to millimetres.
   const profiles = {
     flat: { label: "Plana", icon: "▱", closed: false,
       point: (u, v, t, o) => [(u - 0.5) * o.width, (v - 0.5) * o.height, t] },
@@ -36,15 +47,21 @@ const LithoGeometry = (() => {
     arc: { label: "Arco", icon: "◠", closed: false, field: "arc-angle", preserveAspect: true,
       surfaceWidth: o => Math.PI * o.width * o["arc-angle"] / 360,
       point: (u, v, t, o) => roundPoint(u, v, t, o, 1, tau * o["arc-angle"] / 360) },
-    candle: { label: "Portavelas", icon: "⊔", closed: true, field: "base-thickness", preserveAspect: true, floor: true,
-      point: (u, v, t, o) => roundPoint(u, v, t, o, 1 + 0.1 * v) },
-    vase: { label: "Florero", icon: "⚱", closed: true, field: "base-thickness", preserveAspect: true, floor: true,
-      point(u, v, t, o) {
-        const belly = 0.28 * Math.sin(Math.PI * v) ** 2;
-        const neck = 0.36 * smoothStep(0.46, 0.82, v);
-        const lip = 0.18 * smoothStep(0.85, 1, v);
-        return roundPoint(u, v, t, o, 1 + belly - neck + lip);
-      } }
+    candle: vessel("Portavelas", "⊔", {
+      round: { label: "Redondo", scale: v => 1 + 0.1 * v },
+      bowl: { label: "Cuenco", scale: v => 1 + 0.36 * Math.sin(Math.PI * v / 2) },
+      tulip: { label: "Tulipa", scale: v => 1 - 0.18 * Math.sin(Math.PI * v) ** 2 + 0.3 * v ** 2 },
+      barrel: { label: "Barril", scale: v => 1 + 0.31 * Math.sin(Math.PI * v) - 0.04 * v }
+    }),
+    vase: vessel("Florero", "⚱", {
+      classic: { label: "Clásico", scale: v => 1 + 0.28 * Math.sin(Math.PI * v) ** 2 -
+        0.36 * smoothStep(0.46, 0.82, v) + 0.18 * smoothStep(0.85, 1, v) },
+      bottle: { label: "Botella", scale: v => 1 + 0.14 * smoothStep(0, 0.22, v) -
+        0.65 * smoothStep(0.53, 0.78, v) + 0.06 * smoothStep(0.91, 1, v) },
+      amphora: { label: "Ánfora", scale: v => 1 + 0.55 * Math.sin(Math.PI * v) ** 2 -
+        0.23 * smoothStep(0.54, 0.87, v) + 0.12 * smoothStep(0.91, 1, v) },
+      trumpet: { label: "Trompeta", scale: v => 1 - 0.26 * Math.sin(Math.PI * v) ** 2 + 0.45 * v ** 3 }
+    })
   };
 
   function surfaceWidth(options) {

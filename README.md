@@ -51,3 +51,5 @@ El cilindro divide la circunferencia en posiciones iguales. Selecciona varias fo
 **Portavelas** y **Florero** tienen un fondo sólido integrado de grosor regulable y una boca abierta. El portavelas está pensado para velas LED. Para flores con agua, usa un recipiente interior. Las medidas específicas de cada forma se pueden guardar en preajustes.
 
 El arco, el portavelas y el florero también admiten varias fotos. Puedes seleccionarlas de golpe o ajustar las posiciones con **+** y **−**. Con una sola foto, se centra y mantiene la proporción en la superficie. En los recipientes, el encuadre compensa los cambios de diámetro entre la base, el cuerpo y la boca. El número de posiciones se puede guardar en un preajuste.
+
+En **Geometría**, elige un perfil de recipiente. **Portavelas** ofrece Redondo, Cuenco, Tulipa y Barril. **Florero** ofrece Clásico, Botella, Ánfora y Trompeta. El diámetro indicado corresponde a la base. El perfil elegido se guarda en los preajustes y se aplica al encuadre de las fotos y al STL.
